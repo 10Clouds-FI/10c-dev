@@ -1,0 +1,61 @@
+{
+  "tracker": "jira",
+  "jira": {
+    "site": "https://your-org.atlassian.net",
+    "projectKey": "ABC",
+    "board": 123,
+    "cloudId": "00000000-0000-0000-0000-000000000000"
+  },
+  "slack": {
+    "workspace": "your-org.slack.com",
+    "projectChannel": "C0123456789"
+  },
+  "statusMap": {
+    "todo": "To Do",
+    "in_progress": "In Progress",
+    "in_review": "In Review",
+    "blocked": "To Do",
+    "done": "Done"
+  },
+  "transitionIds": {
+    "todo": "11",
+    "in_progress": "21",
+    "in_review": "31",
+    "done": "41"
+  },
+  "git": {
+    "baseBranch": "main",
+    "remote": "origin",
+    "mode": "pr",
+    "branchPrefix": "feature/"
+  },
+  "verify": {
+    "commands": ["make lint"],
+    "byArea": {
+      "src/web": ["npm run lint", "npm run typecheck", "npm test"],
+      "src/api": ["make api-lint", "make api-test"],
+      "migrations": ["make migrate-check"]
+    }
+  },
+  "app": {
+    "start": "make start",
+    "urls": {
+      "app": "http://localhost:3000/",
+      "api-docs": "http://localhost:8000/docs"
+    }
+  },
+  "rules": {
+    "src/web": [".claude/rules/frontend.md"],
+    "src/api": [".claude/rules/backend.md"],
+    "migrations": [".claude/rules/migrations.md"]
+  },
+  "hotspots": ["src/api/routes.py", "src/web/App.tsx", "migrations/**"],
+  "reporting": {
+    "language": "en",
+    "commentStyle": "technical"
+  },
+  "notes": [
+    "This board has no Blocked status — a paused task goes back to To Do with a comment.",
+    "verify.commands is the default gate; a change inside an area also runs that area's byArea set."
+  ]
+}

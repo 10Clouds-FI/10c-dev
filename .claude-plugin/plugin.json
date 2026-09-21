@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "10c-dev",
+  "displayName": "10Clouds Dev Workflow",
+  "version": "0.1.0",
+  "description": "A shareable software-delivery workflow for Claude Code: ticket-driven build cycle with an explicit prototype-to-production rung, a one-question interview, verification on the live app, self code-review, an adversarial critic, and a session board so parallel sessions on one machine do not collide.",
+  "author": {
+    "name": "10Clouds"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/10Clouds-FI/10c-dev",
+  "repository": "https://github.com/10Clouds-FI/10c-dev",
+  "keywords": [
+    "workflow",
+    "jira",
+    "code-review",
+    "testing",
+    "slack",
+    "delivery",
+    "agile",
+    "session-board"
+  ]
+}

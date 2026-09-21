@@ -1,0 +1,15 @@
+{
+  "name": "10c-dev",
+  "owner": {
+    "name": "10Clouds",
+    "url": "https://github.com/10clouds"
+  },
+  "description": "The 10Clouds delivery workflow for Claude Code, distributed as a single plugin.",
+  "plugins": [
+    {
+      "name": "10c-dev",
+      "source": "./",
+      "description": "Ticket-driven build cycle for Claude Code: rung ladder, interview, live-app verification, self code-review, adversarial critic, and a shared session board."
+    }
+  ]
+}
