@@ -39,6 +39,37 @@ The ticket status is derived from where the code is, never from how the conversa
 **In Progress** while it is local, **In Review** once pushed or in a PR, **Done** only after a
 human checked it in production. Longer version: [`docs/process.md`](docs/process.md).
 
+<details>
+<summary>The questions a first look usually raises</summary>
+
+- **Is this all ceremony for a typo fix?** No. The rung decides how much process runs. A one-line
+  fix is R0: no interview beyond the one question that matters, no tests, no critic. R2 and up
+  get the full cycle.
+- **Does it assume Jira and a release train?** No. The tracker, its status names, the base
+  branch, push-to-main versus pull requests, and how to start the app all come from
+  `.claude/task-flow.json` in your repo. `"tracker": "none"` runs the cycle with no tracker at all.
+  If you deploy continuously, "checked on production" is simply the step after your deploy.
+- **What does it do without asking?** It edits your working tree, runs your app locally, and
+  moves the ticket to In Progress when you name a key and to In Review after a push. It never
+  commits, pushes, posts to Slack, or marks a ticket Done without your yes in the conversation.
+- **Does it work in a branch?** It works in your checkout. With `"git": {"mode": "pr"}` it
+  starts a `feature/<key>` branch and opens a pull request; with `push-to-main` it commits to
+  the base branch, which is how teams that deploy `main` to staging run it. Either way the
+  session board hooks warn when another live session on the machine holds the same files.
+- **Is any of it enforced, or is it just prose?** Mostly prose the model follows, with two
+  mechanical guards: the session board hooks ask you before a `git push` or a stack restart
+  that would collide with another live session, and nothing is committed or pushed without
+  your explicit yes in the conversation.
+- **Why does the critic not read the code?** So it tests what was asked for rather than what was
+  built. It reads the ticket, drives the running app like a user, and reports PASS or FAIL. It is
+  optional, costs a second agent run, and is worth it on backend, auth and data-isolation work
+  more than on visual tweaks.
+- **What does it send where?** Only what you already use: calls to your Jira site with your own
+  token, and Slack posts you approve one by one. There is no telemetry and no third-party
+  service of ours in the loop.
+
+</details>
+
 ## Skills
 
 | Command | What it does |
