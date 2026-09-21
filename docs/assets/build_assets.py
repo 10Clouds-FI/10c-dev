@@ -367,7 +367,7 @@ width="{HERO_W}" height="{HERO_H}" role="img" aria-label="{alt}">
 # cycle.svg — the build cycle
 # --------------------------------------------------------------------------- #
 
-CYCLE_W, CYCLE_H = 1000, 1198
+CYCLE_W = 1000  # the height follows from the content
 
 
 def node(x, y, w, h, fill=SIGNAL_BLUE, stroke=DEEP_TEAL, width=1.6, dashed=False, rx=12):
@@ -462,319 +462,280 @@ def side_effect(type_: Type, x, y, kind: str, text: str, size=12.0, anchor="star
 
 
 def build_cycle(type_: Type) -> str:
+    """The build cycle.
+
+    Geometry rules, so the picture stays tidy when the wording changes:
+    every box is sized from its content plus a fixed PAD on all four sides, the
+    stacked blocks are laid out by a cursor with one GAP between them (big enough
+    that every arrow has a stem, not just a head), and nothing is eyeballed.
+    """
     T = type_.text
     o: list[str] = []
 
-    # One left edge and one width for the whole chain; only Build is wider.
-    L, W = 200, 500
+    PAD, GAP, LINE = 16, 44, 18
+    L, W = 200, 470            # the chain
     MID = L + W / 2
-    BX, BW = 84, 616  # Build
-    PX = 800  # the column the human stands in
+    BX, BW = 130, 610          # Build, the only wider block
+    PX = 812                   # the column the human stands in
 
-    # ---- 1. the ticket ---------------------------------------------------- #
+    def block(y, title, sub=None, body=(), marker=None, dashed=False,
+              fill=SIGNAL_BLUE, stroke=DEEP_TEAL, x=L, w=W, tsize=20):
+        """One box: a title, optionally a sub-line on the same baseline, optionally
+        extra body lines, optionally a side-effect marker on the right."""
+        h = PAD * 2 + 22 + LINE * len(body)
+        out = [node(x, y, w, h, fill=fill, stroke=stroke, dashed=dashed,
+                    width=1.8 if dashed else 1.6)]
+        base = y + PAD + 21
+        out.append(T(title, x + PAD, base, tsize, "medium", WHITE))
+        if sub:
+            tw = type_.measure(title, tsize, "medium")
+            out.append(T(sub, x + PAD + tw + 9, base, 13, "regular", MIST_GREEN))
+        for i, part in enumerate(body):
+            out.append(T(part, x + PAD, base + 22 + i * LINE, 12.5, "regular", MIST_GREEN))
+        if marker:
+            out.append(side_effect(type_, x + w - PAD, base, marker[0], marker[1], 12,
+                                   anchor="end"))
+        o.extend(out)
+        return h
+
+    def strip(y, n, title, sub, x, w, marker=None, h=36):
+        """A single-line row inside Build."""
+        o.append(
+            f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="8" fill="{DEEP_BLUE}" '
+            f'stroke="{DEEP_TEAL}" stroke-width="1.3"/>'
+        )
+        base = y + 24
+        o.append(badge(type_, x + 26, y + h / 2, n))
+        o.append(T(title, x + 44, base, 14, "medium", WHITE))
+        tw = type_.measure(title, 14, "medium")
+        if sub:
+            o.append(T(sub, x + 44 + tw + 9, base, 12.5, "regular", MIST_GREEN))
+        if marker:
+            o.append(side_effect(type_, x + 36, base + 20, marker[0], marker[1], 11.5))
+        return h
+
+    def down(y0, y1, x=MID, label=None, lx=None):
+        o.append(line(f"M{x} {y0 + 2} V {y1 - 3}"))
+        if label:
+            o.append(T(label, (lx or x + 12), (y0 + y1) / 2 + 5, 13, "regular", MIST_GREEN))
+
+    y = 28
+
+    # ---- the ticket ------------------------------------------------------- #
     o.append(
-        f'<rect x="{L}" y="22" width="{W}" height="62" rx="14" fill="none" '
+        f'<rect x="{L}" y="{y}" width="{W}" height="70" rx="14" fill="none" '
         f'stroke="{MIST_GREEN}" stroke-width="1.6" opacity="0.6"/>'
     )
-    o.append(T("/10c-dev:implement ABC-123", L + 18, 44, 15, "medium", WHITE))
-    o.append(
-        T("— a ticket key, or LOCAL-<date> when there is no ticket",
-          L + 18, 63, 13, "regular", MIST_GREEN)
+    o.append(T("/10c-dev:implement ABC-123", L + PAD, y + PAD + 18, 16, "medium", WHITE))
+    o.append(side_effect(type_, L + W - PAD, y + PAD + 18, "auto", "moves ticket", 12, anchor="end"))
+    o.append(T("a ticket key, or LOCAL-<date>", L + PAD, y + PAD + 40, 13, "regular", MIST_GREEN))
+    ticket_bottom = y + 70
+    y = ticket_bottom + GAP
+
+    # ---- Build ------------------------------------------------------------ #
+    build_top = y
+    mark = len(o)              # the Build frame is inserted here once its height is known
+    o.append(T("Build", BX + PAD + 4, y + PAD + 26, 27, "medium", WHITE))
+    inner_x, inner_w = BX + PAD, BW - PAD * 2
+    sy = y + PAD + 44
+    strip(sy, 1, "Rung",
+          "R0 probe · R1 PoC · R2 MVP · R3 hardened — the ceremony scales with it",
+          inner_x, inner_w)
+    iy = sy + 36 + 12
+    strip(iy, 2, "Interview", "until the goal is clear", inner_x, inner_w)
+    ry = iy + 36 + 12
+    cw = (inner_w - 20) / 2
+    strip(ry, 3, "Tiny spec", "what done means", inner_x, cw, h=54)
+    strip(ry, 4, "Write the code", "in your checkout", inner_x + cw + 20, cw, h=54,
+          marker=("auto", "edits files"))
+    build_h = (ry + 54 + PAD) - build_top
+    o.insert(mark, node(BX, build_top, BW, build_h, stroke=MIST_GREEN, width=2.2, rx=16))
+    build_bottom = build_top + build_h
+    # step 3 leads into step 4
+    o.append(line(f"M{inner_x + cw + 3} {ry + 27} H {inner_x + cw + 17}", width=2.0))
+
+    # The human stands further right than the other two, because this row's labels
+    # are long: the icon starts at least 10px clear of the end of "one question at
+    # a time", and the labels sit clear of the stems.
+    IX = 906
+    o.append(person(IX, iy + 16, 0.85))
+    o.append(T("You", IX, iy - 26, 15, "medium", WHITE, "middle"))
+    o.append(line(f"M{BX + BW + 4} {iy + 6} H {IX - 32}", width=2.0))
+    o.append(T("one question at a time", BX + BW + 14, iy - 10, 12.5, "regular", MIST_GREEN))
+    o.append(line(f"M{IX - 32} {iy + 36} H {BX + BW + 4}", width=2.0))
+    o.append(T("you answer", BX + BW + 14, iy + 54, 12.5, "regular", MIST_GREEN))
+
+    y = build_bottom + GAP
+
+    # ---- verify ------------------------------------------------------------ #
+    verify_top = y
+    vh = block(y, "Verify", "— on the running app, not just the compiler")
+    verify_bottom = y + vh
+    down(build_bottom, verify_top, x=330, label="prove it", lx=342)
+    y = verify_bottom + GAP
+
+    # ---- review ------------------------------------------------------------ #
+    review_top = y
+    rh = block(y, "Review your own diff")
+    review_bottom = y + rh
+    down(verify_bottom, review_top)
+    y = review_bottom + GAP
+
+    # ---- the critic — the one block that keeps two lines ------------------- #
+    critic_top = y
+    ch = block(
+        y, "The adversarial critic",
+        body=[
+            "It reads only the ticket — so it tests what was asked for,",
+            "not what was built — then tries to break the running app.",
+        ],
+        marker=("auto", "drives your app"),
+        dashed=True, stroke=MIST_GREEN,
     )
-    o.append(side_effect(type_, L + 12, 79, "auto", "moves your ticket to In Progress"))
-    o.append(line(f"M{MID} 84 V 96"))
+    critic_bottom = y + ch
+    down(review_bottom, critic_top)
+    y = critic_bottom + GAP
 
-    # ---- 2. Build: the heart, and the only block with an inside ----------- #
-    by, bh = 100, 374
-    o.append(node(BX, by, BW, bh, stroke=MIST_GREEN, width=2.2, rx=16))
-    o.append(T("Build the smallest thing that works", BX + 26, by + 34, 25, "medium", WHITE))
+    # ---- commit and push --------------------------------------------------- #
+    commit_top = y
+    qh = block(y, "Commit and push?", "— only on your yes", marker=("ask", "asks first"))
+    commit_bottom = y + qh
+    down(critic_bottom, commit_top, label="PASS (or skipped)")
+    o.append(person(PX, commit_top + 20, 0.78))
+    o.append(talk(PX, commit_top + 24, L + W + 4, PX - 32, "you say yes", type_, label_dy=32))
+    y = commit_bottom + GAP
 
-    # -- 1. the rung: picked once, so no arrows between the four ---------- #
-    rx0, ry0, rw0 = BX + 16, 146, BW - 32
-    o.append(
-        f'<rect x="{rx0}" y="{ry0}" width="{rw0}" height="140" rx="10" fill="{DEEP_BLUE}" '
-        f'stroke="{DEEP_TEAL}" stroke-width="1.4"/>'
-    )
-    o.append(badge(type_, rx0 + 21, ry0 + 20, 1))
-    o.append(T("Rung — how finished this has to be", rx0 + 38, ry0 + 25, 14.5, "medium", WHITE))
+    # the critic can be skipped: a bracket around that one block
+    o.append(line(f"M{L} {review_bottom - 10} H 156 V {commit_top + 24} H {L - 4}",
+                  width=1.5, opacity=0.85))
+    o.append(T("or skip the critic", 24, review_bottom - 16, 12, "regular", MIST_GREEN))
 
-    steps = [
-        ("R0 probe", "throwaway, no tests"),
-        ("R1 PoC", "works once, no tests"),
-        ("R2 MVP", "tests and self-review"),
-        ("R3 hardened", "tests, review, critic"),
-    ]
-    sw, sgap = 130, 14
-    sx0, stop = rx0 + 12, ry0 + 34
-    for i, (title, caption) in enumerate(steps):
-        x = sx0 + i * (sw + sgap)
-        o.append(
-            f'<rect x="{x}" y="{stop}" width="{sw}" height="56" rx="6" fill="{SIGNAL_BLUE}" '
-            f'stroke="{DEEP_TEAL}" stroke-width="1.2"/>'
-        )
-        o.append(T(title, x + 9, stop + 22, 13.5, "medium", WHITE))
-        o.append(T(caption, x + 9, stop + 43, 11.5, "regular", MIST_GREEN))
-    for j, part in enumerate(
-        [
-            "the agent proposes a rung, you agree or pick another;",
-            "the ceremony scales with it — R0/R1 skip tests and the critic",
-        ]
-    ):
-        o.append(T(part, rx0 + 12, stop + 78 + j * 16, 12.5, "regular", MIST_GREEN))
+    # ---- both failure loops, on the right at different offsets ------------- #
+    code_right = inner_x + cw + 20 + cw           # right edge of step 4
+    o.append(loop(f"M{L + W} {verify_top + 22} H 790 V {ry + 20} H {code_right + 4}"))
+    o.append(T("failed → fix in", 620, verify_top - 12, 12.5, "regular", MIST_GREEN))
+    o.append(badge(type_, 620 + type_.measure("failed → fix in ", 12.5) + 8, verify_top - 16, 4))
+    o.append(loop(f"M{L + W} {critic_top + 30} H 856 V {ry + 40} H {code_right + 4}"))
+    o.append(T("FAIL → back to", 660, verify_bottom + 26, 12.5, "medium", MIST_GREEN))
+    o.append(badge(type_, 660 + type_.measure("FAIL → back to ", 12.5, "medium") + 8,
+                   verify_bottom + 22, 4))
 
-    # -- 2. the interview ------------------------------------------------- #
-    iy = 296
-    o.append(
-        f'<rect x="{rx0}" y="{iy}" width="{rw0}" height="50" rx="10" fill="{DEEP_BLUE}" '
-        f'stroke="{DEEP_TEAL}" stroke-width="1.4"/>'
-    )
-    o.append(badge(type_, rx0 + 21, iy + 21, 2))
-    o.append(T("The interview", rx0 + 38, iy + 26, 16, "medium", WHITE))
-    o.append(
-        T("until the goal is clear — usually 2–5 questions; say 'go' to stop",
-          rx0 + 150, iy + 26, 13, "regular", MIST_GREEN)
-    )
-    o.append(line(f"M{rx0 + 40} {ry0 + 140} V {iy - 4}", width=2.0))
+    # ---- on staging --------------------------------------------------------- #
+    staging_top = y
+    sh = block(y, "On staging", "— ticket In Review", marker=("auto", "ticket → In Review"),
+               fill=DEEP_BLUE)
+    staging_bottom = y + sh
+    down(commit_bottom, staging_top)
+    y = staging_bottom + GAP
 
-    # -- 3. the tiny spec and 4. writing the code, same size -------------- #
-    ry1, rh1 = 356, 104
-    half = (rw0 - 22) / 2
-    cards = [
-        (3, "The tiny spec",
-         [("what done means, agreed before any code", 12.5),
-          ("posted in the chat, not a file", 12.5)],
-         None),
-        (4, "Write the code",
-         [("in your checkout — on a feature branch", 11.5),
-          ("when your repo runs PRs; the session board", 11.5),
-          ("warns if another session holds the same files", 11.5)],
-         ("auto", "edits your working tree")),
-    ]
-    for i, (n, title, body, effect) in enumerate(cards):
-        x = rx0 + i * (half + 22)
-        o.append(
-            f'<rect x="{x}" y="{ry1}" width="{half}" height="{rh1}" rx="10" '
-            f'fill="{DEEP_BLUE}" stroke="{DEEP_TEAL}" stroke-width="1.4"/>'
-        )
-        o.append(badge(type_, x + 21, ry1 + 20, n))
-        o.append(T(title, x + 38, ry1 + 25, 16, "medium", WHITE))
-        for j, (part, size) in enumerate(body):
-            o.append(T(part, x + 14, ry1 + 46 + j * 15, size, "regular", MIST_GREEN))
-        if effect:
-            o.append(side_effect(type_, x + 8, ry1 + 94, effect[0], effect[1], 12))
-    o.append(line(f"M{rx0 + 40} {iy + 50} V {ry1 - 4}", width=2.0))
-    o.append(line(f"M{rx0 + half + 3} {ry1 + rh1 / 2} H {rx0 + half + 19}", width=2.0))
-
-    # -- the human, on the interview's own row ---------------------------- #
-    o.append(person(PX, iy + 24, 1.05))
-    o.append(T("You", PX, iy - 26, 15, "medium", WHITE, "middle"))
-    o.append(line(f"M{BX + BW + 4} {iy + 4} H {PX - 40}", width=2.0))
-    o.append(T("one question at a time", BX + BW + 10, iy - 4, 13, "regular", MIST_GREEN))
-    o.append(line(f"M{PX - 40} {iy + 44} H {BX + BW + 4}", width=2.0))
-    o.append(T("you answer", BX + BW + 10, iy + 62, 13, "regular", MIST_GREEN))
-
-    # ---- 3. verify — running the app is not a write, so no marker --------- #
-    vy, vh = 502, 68
-    o.append(node(L, vy, W, vh))
-    o.append(T("Verify", L + 20, vy + 26, 21, "medium", WHITE))
-    o.append(
-        T("runs your app locally, using app.start from your config",
-          L + W - 18, vy + 24, 12, "regular", MIST_GREEN, "end")
-    )
-    o.append(
-        T("run it as a human would — UI, API or CLI — not just the compiler.",
-          L + 20, vy + 46, 13, "regular", MIST_GREEN)
-    )
-    o.append(T("The agent judges, you can overrule.", L + 20, vy + 62, 13, "regular", MIST_GREEN))
-    o.append(line(f"M300 {by + bh} V {vy - 4}"))
-    o.append(T("prove it", 312, vy - 6, 13, "regular", MIST_GREEN))
-    # the loop back lands on step 4's own border
-    o.append(loop(f"M600 {vy - 2} V {ry1 + rh1 + 4}"))
-    o.append(T("verification failed → fix in", 592 - type_.measure("verification failed → fix in", 13) - 22,
-               vy - 6, 13, "regular", MIST_GREEN))
-    o.append(badge(type_, 583, vy - 10, 4))
-
-    # ---- 4. self review --------------------------------------------------- #
-    ry2, rh2 = 586, 54
-    o.append(node(L, ry2, W, rh2))
-    o.append(T("Review your own diff", L + 20, ry2 + 26, 20, "medium", WHITE))
-    o.append(
-        T("fix blockers first; then cleanup — what did this change make pointless?",
-          L + 20, ry2 + 45, 12.5, "regular", MIST_GREEN)
-    )
-    o.append(line(f"M{MID} {vy + vh} V {ry2 - 4}"))
-    o.append(line(f"M{MID} {ry2 + rh2} V 652"))
-
-    # ---- 5. the critic — dashed, because dashed means optional ------------ #
-    cy0, ch0 = 656, 84
-    o.append(node(L, cy0, W, ch0, dashed=True, stroke=MIST_GREEN, width=1.8))
-    o.append(T("The adversarial critic", L + 20, cy0 + 26, 20, "medium", WHITE))
-    o.append(
-        side_effect(type_, L + W - 18, cy0 + 24, "auto",
-                    "drives your running app; you start the app", 11.5, anchor="end")
-    )
-    for i, part in enumerate(
-        [
-            "A second agent that only reads the ticket — so it tests what was",
-            "ASKED for, not what was built — and drives the running app trying",
-            "to break it.",
-        ]
-    ):
-        o.append(T(part, L + 20, cy0 + 44 + i * 15, 12.5, "regular", MIST_GREEN))
-
-    # FAIL goes back to step 4. Its route is offset well clear of Verify's loop,
-    # and the label sits on the vertical segment, just under Build's right border.
-    o.append(loop(f"M{L + W} {cy0 + 40} H 860 V 416 H {rx0 + rw0 + 4}"))
-    fail_text = "FAIL — findings go back to"
-    fail_w = type_.measure(fail_text, 13, "medium")
-    o.append(T(fail_text, 836 - fail_w - 18, 496, 13, "medium", MIST_GREEN))
-    o.append(badge(type_, 845, 492, 4))
-
-    o.append(line(f"M{MID} {cy0 + ch0} V 754"))
-    o.append(T("PASS (or skipped)", MID + 12, 754, 13, "medium", MIST_GREEN))
-
-    # the critic can be skipped: a bracket around that one block only
-    o.append(line(f"M{L} {ry2 + rh2 - 8} H 176 V 750 H {L - 4}", width=1.5, opacity=0.85))
-    o.append(T("or skip the critic — your call", 20, ry2 + 40, 11.5, "regular", MIST_GREEN))
-
-    # ---- 6. commit and push ----------------------------------------------- #
-    qy, qh = 758, 62
-    o.append(node(L, qy, W, qh))
-    o.append(T("Commit and push?", L + 20, qy + 26, 20, "medium", WHITE))
-    o.append(side_effect(type_, L + W - 18, qy + 24, "ask", "asks you first", anchor="end"))
-    o.append(
-        T("to your base branch or as a PR — your repo's config decides. Only on your yes.",
-          L + 20, qy + 46, 12.5, "regular", MIST_GREEN)
-    )
-    o.append(person(PX, qy + 20, 0.78))
-    o.append(talk(PX, qy + 24, L + W + 4, PX - 32, "you say yes", type_, label_dy=32))
-
-    # ---- 7. the state the ticket waits in --------------------------------- #
-    sy, sh = 840, 66
-    o.append(node(L, sy, W, sh, fill=DEEP_BLUE, stroke=DEEP_TEAL))
-    o.append(T("On staging", L + 20, sy + 24, 17, "medium", WHITE))
-    o.append(
-        T("your CI deploys it; not part of this plugin. Ticket is In Review.",
-          L + 128, sy + 24, 12.5, "regular", MIST_GREEN)
-    )
-    o.append(side_effect(type_, L + 12, sy + 48, "auto", "ticket moved to In Review after the push"))
-    o.append(line(f"M{MID} {qy + qh} V {sy - 4}"))
-
-    # ---- 8. the human check ----------------------------------------------- #
-    dcy, dhw, dhh = 958, 190, 34
+    # ---- the human check ----------------------------------------------------- #
+    dhw, dhh = 180, 36
+    dcy = y + dhh
     o.append(
         f'<path d="M{MID} {dcy - dhh} L{MID + dhw} {dcy} L{MID} {dcy + dhh} '
         f'L{MID - dhw} {dcy} z" fill="{DEEP_TEAL}" stroke="{MIST_GREEN}" stroke-width="1.8"/>'
     )
-    o.append(T("Checked on production", MID, dcy - 4, 16, "medium", WHITE, "middle"))
-    o.append(T("by a human?", MID, dcy + 16, 16, "medium", WHITE, "middle"))
-    o.append(line(f"M{MID} {sy + sh} V {dcy - dhh - 4}"))
+    o.append(T("Checked on production", MID, dcy - 4, 15.5, "medium", WHITE, "middle"))
+    o.append(T("by a human?", MID, dcy + 16, 15.5, "medium", WHITE, "middle"))
+    down(staging_bottom, dcy - dhh)
     o.append(person(PX, dcy - 8, 0.78))
     o.append(talk(PX, dcy - 4, MID + dhw + 4, PX - 32, "you check", type_, label_dy=32))
+    diamond_bottom = dcy + dhh
 
-    # "not yet" is a wait: it loops back into the staging state
-    o.append(loop(f"M{MID - dhw - 4} {dcy} H 168 V {sy + 38} H {L - 4}"))
+    # not yet: back into staging
+    o.append(loop(f"M{MID - dhw - 4} {dcy} H 150 V {staging_top + 26} H {L - 4}"))
     o.append(
-        f'<g transform="rotate(-90 152 920)">'
-        + T("wait for the next check", 152, 924, 12, "regular", MIST_GREEN, "middle")
+        f'<g transform="rotate(-90 132 {(staging_top + dcy) / 2})">'
+        + T("wait for the next check", 132, (staging_top + dcy) / 2 + 4, 12, "regular",
+            MIST_GREEN, "middle")
         + "</g>"
     )
+    y = diamond_bottom + GAP
 
-    # a failure in production is a drawn outcome too, not a loose end
-    o.append(loop(f"M{MID - 96} {dcy + 18} L 300 1010"))
+    # ---- done, and the other outcome ----------------------------------------- #
+    done_h = 58
+    done_top = y
+    o.append(f'<rect x="{MID - 100}" y="{done_top}" width="200" height="{done_h}" rx="29" '
+             f'fill="{MIST_GREEN}"/>')
+    o.append(T("Done", MID, done_top + 36, 21, "medium", DEEP_BLUE, "middle"))
+    down(diamond_bottom, done_top, label="yes")
+    o.append(side_effect(type_, MID - 112, done_top + 36, "ask", "you confirm", 12, anchor="end"))
+
+    bug_y = done_top - 4
     o.append(
-        f'<rect x="24" y="1004" width="268" height="42" rx="14" fill="none" '
+        f'<rect x="24" y="{bug_y}" width="196" height="46" rx="14" fill="none" '
         f'stroke="{MIST_GREEN}" stroke-width="1.6" opacity="0.6"/>'
     )
-    o.append(T("found a bug → a new ticket,", 40, 1023, 12.5, "regular", MIST_GREEN))
-    o.append(T("this one stays In Review", 40, 1039, 12.5, "regular", MIST_GREEN))
+    o.append(T("a new ticket", 40, bug_y + 20, 13, "medium", WHITE))
+    o.append(T("this one stays In Review", 40, bug_y + 37, 12, "regular", MIST_GREEN))
+    o.append(loop(f"M{MID - 92} {dcy + 20} L 228 {bug_y + 16}"))
+    o.append(T("found a bug", MID - 200, dcy + 56, 12, "regular", MIST_GREEN, "end"))
 
-    # ---- 9. done ----------------------------------------------------------- #
-    o.append(line(f"M{MID} {dcy + dhh} V 1004"))
-    o.append(T("yes", MID + 12, 1000, 13.5, "medium", MIST_GREEN, tracking=1.2))
-    o.append(f'<rect x="{MID - 90}" y="1008" width="180" height="38" rx="19" fill="{MIST_GREEN}"/>')
-    o.append(T("Done", MID, 1034, 19, "medium", DEEP_BLUE, "middle"))
-    o.append(side_effect(type_, MID + 104, 1033, "ask", "only when you say it was checked"))
+    done_bottom = done_top + done_h
 
-    # ---- the status rail, with the band boundaries drawn ------------------- #
-    rail = 944
-    bands = [("IN PROGRESS", 22, qy + qh), ("IN REVIEW", sy, dcy + dhh), ("DONE", 1008, 1046)]
+    # ---- the status rail ------------------------------------------------------ #
+    rail = 958
+    bands = [
+        ("IN PROGRESS", 28, commit_bottom),
+        ("IN REVIEW", staging_top, diamond_bottom),
+        ("DONE", done_top, done_bottom),
+    ]
     for label, y0, y1 in bands:
         o.append(f'<path d="M{rail} {y0} V {y1}" stroke="{DEEP_TEAL}" stroke-width="7" fill="none"/>')
         for edge in (y0, y1):
             o.append(
-                f'<path d="M{rail - 9} {edge} H {rail + 9}" stroke="{MIST_GREEN}" '
+                f'<path d="M{rail - 8} {edge} H {rail + 8}" stroke="{MIST_GREEN}" '
                 f'stroke-width="1.6" opacity="0.8" fill="none"/>'
             )
         mid = (y0 + y1) / 2
         o.append(
-            f'<g transform="rotate(-90 {rail - 16} {mid})">'
-            + T(label, rail - 16, mid + 5, 13.5, "medium", MIST_GREEN, "middle", tracking=2.0)
+            f'<g transform="rotate(-90 {rail - 20} {mid})">'
+            + T(label, rail - 20, mid + 4, 12, "medium", MIST_GREEN, "middle", tracking=1.4)
             + "</g>"
         )
     o.append(
-        f'<g transform="rotate(-90 977 540)">'
-        + T("TICKET STATUS FOLLOWS THE CODE", 977, 544, 13.5, "medium", MIST_GREEN, "middle",
-            tracking=2.0)
+        f'<g transform="rotate(-90 986 {(28 + done_bottom) / 2})">'
+        + T("TICKET STATUS FOLLOWS THE CODE", 986, (28 + done_bottom) / 2 + 4, 12, "medium",
+            MIST_GREEN, "middle", tracking=1.4)
         + "</g>"
     )
 
-    # ---- legend, in its own band under a rule ------------------------------ #
-    o.append(f'<path d="M34 1072 H 966" stroke="{DEEP_TEAL}" stroke-width="1.6" fill="none"/>')
-    cols = [40, 372, 690]
-    rows = [1096, 1120, 1144]
+    # ---- legend, in the free corner beside Done -------------------------------- #
+    cols, rows = [568, 762], [done_top - 16, done_top + 8, done_top + 32]
 
     def lg(col, row, swatch, text):
-        x, y = cols[col], rows[row]
-        o.append(swatch(x, y))
-        o.append(T(text, x + 44, y + 4.5, 12.5, "regular", MIST_GREEN))
+        x, yy = cols[col], rows[row]
+        o.append(swatch(x, yy))
+        o.append(T(text, x + 40, yy + 4.5, 12, "regular", MIST_GREEN))
 
-    lg(0, 0, lambda x, y: line(f"M{x} {y} H {x + 32}", width=2.3), "solid arrow = always")
+    lg(0, 0, lambda x, yy: line(f"M{x} {yy} H {x + 28}", width=2.3), "always")
     lg(
         0, 1,
-        lambda x, y: f'<rect x="{x}" y="{y - 8}" width="32" height="16" rx="4" fill="none" '
-                     f'stroke="{MIST_GREEN}" stroke-width="1.6" stroke-dasharray="9 7"/>',
-        "dashed box = optional",
+        lambda x, yy: f'<rect x="{x}" y="{yy - 8}" width="28" height="16" rx="4" fill="none" '
+                      f'stroke="{MIST_GREEN}" stroke-width="1.6" stroke-dasharray="9 7"/>',
+        "optional",
     )
-    lg(0, 2, lambda x, y: loop(f"M{x} {y} H {x + 32}"), "dotted arrow = loop back")
-    lg(1, 0, lambda x, y: person(x + 14, y - 2, 0.42), "person = you")
-    lg(
-        1, 1,
-        lambda x, y: f'<path d="M{x + 16} {y - 10} L{x + 34} {y} L{x + 16} {y + 10} '
-                     f'L{x - 2} {y} z" fill="{DEEP_TEAL}" stroke="{MIST_GREEN}" stroke-width="1.5"/>',
-        "teal diamond = a decision only a human makes",
-    )
-    lg(
-        1, 2,
-        lambda x, y: f'<rect x="{x}" y="{y - 9}" width="32" height="18" rx="9" fill="{MIST_GREEN}"/>',
-        "pale pill = end",
-    )
-    lg(2, 0, lambda x, y: mark_auto(x + 16, y, 8), "writes outside the chat, automatically")
-    lg(2, 1, lambda x, y: mark_ask(x + 16, y, 9), "asks you first")
-    o.append(
-        T("10Clouds · dev — the build cycle", cols[2] + 44, rows[2] + 4.5, 12.5,
-          "regular", MIST_GREEN, opacity=0.8)
-    )
-    o.append(
-        T("the rail on the right is the ticket status (Jira today; tracker: none to skip)",
-          cols[0], 1170, 12.5, "regular", MIST_GREEN)
-    )
+    lg(0, 2, lambda x, yy: loop(f"M{x} {yy} H {x + 28}"), "loops back")
+    lg(1, 0, lambda x, yy: person(x + 12, yy - 2, 0.4), "you")
+    lg(1, 1, lambda x, yy: mark_auto(x + 14, yy, 7), "writes on its own")
+    lg(1, 2, lambda x, yy: mark_ask(x + 14, yy, 8), "asks you first")
 
+    o.append(T("10Clouds · dev", 26, 54, 13, "medium", MIST_GREEN, opacity=0.85))
+    o.append(T("the build cycle", 26, 72, 12.5, "regular", MIST_GREEN, opacity=0.7))
+
+    height = int(done_bottom + 22)
     alt = (
-        "The 10c-dev build cycle. Invoking the implement skill on a ticket key moves the "
-        "ticket to In Progress and feeds a large Build block with four numbered steps: the "
-        "rung (R0 probe, R1 PoC, R2 MVP, R3 hardened), the interview with the developer, the "
-        "tiny spec, and writing the code, which edits your checkout. Verify runs the app "
-        "locally and loops back to step four when it fails. The diff is reviewed with a "
-        "code-review skill adapted from Open Mercato, then an optional adversarial critic "
-        "drives the running app: FAIL returns to step four, PASS goes on, and the critic can "
-        "be skipped. Commit and push asks first and happens only on your yes; the ticket then "
-        "moves to In Review on staging and waits until a human checks it in production — yes "
-        "reaches Done, a bug opens a new ticket while this one stays In Review. Markers show "
-        "which steps write outside the chat automatically and which ask first."
+        "The 10c-dev build cycle. The implement skill on a ticket key moves the ticket to In "
+        "Progress and opens Build, which holds the rung (R0 probe to R3 hardened), the "
+        "interview with the developer, the tiny spec and writing the code. Verify runs it on "
+        "the live app and fails back into step four. The diff is reviewed, then an optional "
+        "critic drives the running app: FAIL returns to step four, PASS goes on, and the "
+        "critic can be skipped. Commit and push happens only on your yes; the ticket waits on "
+        "staging In Review until a human checks production — yes reaches Done, a bug opens a "
+        "new ticket. Markers show which steps write outside the chat and which ask first."
     )
-    return f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {CYCLE_W} {CYCLE_H}" \
-width="{CYCLE_W}" height="{CYCLE_H}" role="img" aria-label="{alt}">
+    return f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {CYCLE_W} {height}" \
+width="{CYCLE_W}" height="{height}" role="img" aria-label="{alt}">
 <title>The 10c-dev build cycle</title>
 <defs>
 <marker id="cy_arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" \
@@ -786,8 +747,8 @@ markerHeight="6" orient="auto-start-reverse">
 <path d="M0 0 L10 5 L0 10 z" fill="{MIST_GREEN}" opacity="0.85"/>
 </marker>
 </defs>
-<rect x="0" y="0" width="{CYCLE_W}" height="{CYCLE_H}" rx="20" fill="{DEEP_BLUE}"/>
-<rect x="1.5" y="1.5" width="{CYCLE_W - 3}" height="{CYCLE_H - 3}" rx="20" fill="none" \
+<rect x="0" y="0" width="{CYCLE_W}" height="{height}" rx="20" fill="{DEEP_BLUE}"/>
+<rect x="1.5" y="1.5" width="{CYCLE_W - 3}" height="{height - 3}" rx="20" fill="none" \
 stroke="{DEEP_TEAL}" stroke-width="3"/>
 {"".join(o)}
 </svg>
