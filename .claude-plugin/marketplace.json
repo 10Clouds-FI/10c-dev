@@ -2,7 +2,7 @@
   "name": "10c-dev",
   "owner": {
     "name": "10Clouds",
-    "url": "https://github.com/10clouds"
+    "url": "https://github.com/10Clouds-FI"
   },
   "description": "The 10Clouds delivery workflow for Claude Code, distributed as a single plugin.",
   "plugins": [
