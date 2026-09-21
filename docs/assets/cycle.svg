@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 900" width="900" height="900" role="img" aria-label="The 10c-dev build cycle: a ticket feeds a build-and-verify loop, then self-review, then an optional critic whose FAIL returns to the build; a PASS ships the code, and a human check on production is what turns the ticket Done. Ticket status runs alongside: In Progress, In Review, Done.">
+  <title>The 10c-dev build cycle</title>
+  <defs>
+    <marker id="cy_arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#D3E3D8"/>
+    </marker>
+    <style>
+      .cy-node  { fill: #152E61; stroke: #29555E; stroke-width: 1.5; }
+      .cy-open  { fill: none; stroke: #D3E3D8; stroke-width: 1.5; stroke-opacity: 0.6; }
+      .cy-end   { fill: #29555E; stroke: #D3E3D8; stroke-width: 1.5; }
+      .cy-t     { font-family: Fustat, 'Helvetica Neue', Helvetica, Arial, sans-serif; fill: #FFFFFF; font-size: 21px; font-weight: 500; }
+      .cy-s     { font-family: Fustat, 'Helvetica Neue', Helvetica, Arial, sans-serif; fill: #D3E3D8; font-size: 13.5px; font-weight: 400; }
+      .cy-l     { font-family: Fustat, 'Helvetica Neue', Helvetica, Arial, sans-serif; fill: #D3E3D8; font-size: 13.5px; font-weight: 400; letter-spacing: 1.6px; }
+      .cy-cap   { font-family: Fustat, 'Helvetica Neue', Helvetica, Arial, sans-serif; fill: #D3E3D8; font-size: 12.5px; font-weight: 400; letter-spacing: 2.4px; }
+      .cy-line  { stroke: #D3E3D8; stroke-width: 2.2; fill: none; opacity: 0.85; }
+      .cy-back  { stroke: #D3E3D8; stroke-width: 2.2; fill: none; opacity: 0.65; stroke-dasharray: 7 6; }
+      .cy-rail  { stroke: #29555E; stroke-width: 6; fill: none; stroke-linecap: round; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="900" height="900" rx="22" fill="#081735"/>
+  <rect x="1.5" y="1.5" width="897" height="897" rx="22" fill="none" stroke="#29555E" stroke-width="3"/>
+
+  <!-- status rail -->
+  <path class="cy-rail" d="M838 70 V 466"/>
+  <path class="cy-rail" d="M838 534 V 706"/>
+  <path class="cy-rail" d="M838 774 V 828"/>
+  <text class="cy-cap" x="866" y="268" text-anchor="middle" transform="rotate(-90 866 268)">IN PROGRESS</text>
+  <text class="cy-cap" x="866" y="620" text-anchor="middle" transform="rotate(-90 866 620)">IN REVIEW</text>
+  <text class="cy-cap" x="866" y="801" text-anchor="middle" transform="rotate(-90 866 801)">DONE</text>
+  <text class="cy-cap" x="796" y="884" text-anchor="end">TICKET STATUS FOLLOWS THE CODE</text>
+
+  <!-- 1. ticket -->
+  <rect class="cy-open" x="300" y="66" width="300" height="54" rx="10"/>
+  <text class="cy-t" x="450" y="89" text-anchor="middle">Ticket</text>
+  <text class="cy-s" x="450" y="109" text-anchor="middle">a real key, or a local one for untracked work</text>
+  <path class="cy-line" d="M450 120 V 142 Q450 152 440 152 H 305 Q295 152 295 162 V 172" marker-end="url(#cy_arrow)"/>
+
+  <!-- 2 + 3. the build / verify loop -->
+  <rect class="cy-node" x="180" y="178" width="230" height="54" rx="10"/>
+  <text class="cy-t" x="295" y="201" text-anchor="middle">Build</text>
+  <text class="cy-s" x="295" y="221" text-anchor="middle">rung · interview · tiny spec</text>
+
+  <rect class="cy-node" x="490" y="178" width="230" height="54" rx="10"/>
+  <text class="cy-t" x="605" y="201" text-anchor="middle">Verify</text>
+  <text class="cy-s" x="605" y="221" text-anchor="middle">on the live app, not the compiler</text>
+
+  <path class="cy-line" d="M410 194 H 484" marker-end="url(#cy_arrow)"/>
+  <path class="cy-back" d="M490 218 H 416" marker-end="url(#cy_arrow)"/>
+  <text class="cy-l" x="450" y="172" text-anchor="middle">prove it</text>
+  <text class="cy-l" x="450" y="244" text-anchor="middle">not yet</text>
+
+  <path class="cy-line" d="M605 232 V 260 Q605 270 595 270 H 460 Q450 270 450 280 V 288" marker-end="url(#cy_arrow)"/>
+
+  <!-- 4. self-review -->
+  <rect class="cy-node" x="300" y="294" width="300" height="54" rx="10"/>
+  <text class="cy-t" x="450" y="317" text-anchor="middle">Review your own diff</text>
+  <text class="cy-s" x="450" y="337" text-anchor="middle">blockers and majors fixed before anyone sees it</text>
+  <path class="cy-line" d="M450 348 V 406" marker-end="url(#cy_arrow)"/>
+
+  <!-- 5. critic -->
+  <rect class="cy-node" x="300" y="412" width="300" height="54" rx="10"/>
+  <text class="cy-t" x="450" y="435" text-anchor="middle">Adversarial critic</text>
+  <text class="cy-s" x="450" y="455" text-anchor="middle">optional · black box · run once</text>
+
+  <!-- FAIL returns to the build -->
+  <path class="cy-back" d="M300 439 H 122 Q110 439 110 427 V 217 Q110 205 122 205 H 174" marker-end="url(#cy_arrow)"/>
+  <text class="cy-l" x="103" y="322" text-anchor="middle" transform="rotate(-90 103 322)">FAIL</text>
+
+  <path class="cy-line" d="M450 466 V 526" marker-end="url(#cy_arrow)"/>
+  <text class="cy-l" x="462" y="502">PASS</text>
+
+  <!-- 6. ship -->
+  <rect class="cy-node" x="300" y="532" width="300" height="54" rx="10"/>
+  <text class="cy-t" x="450" y="555" text-anchor="middle">Commit and push</text>
+  <text class="cy-s" x="450" y="575" text-anchor="middle">offered every time, never done unasked</text>
+  <path class="cy-line" d="M450 586 V 624" marker-end="url(#cy_arrow)"/>
+
+  <!-- 7. the human check -->
+  <path class="cy-node" d="M320 630 H 580 L 620 668 L 580 706 H 320 L 280 668 Z"/>
+  <text class="cy-t" x="450" y="666" text-anchor="middle" font-size="19">Checked on production</text>
+  <text class="cy-t" x="450" y="688" text-anchor="middle" font-size="19">by a human?</text>
+
+  <path class="cy-back" d="M280 668 H 210" marker-end="url(#cy_arrow)"/>
+  <text class="cy-s" x="200" y="672" text-anchor="end">not yet</text>
+
+  <path class="cy-line" d="M450 706 V 768" marker-end="url(#cy_arrow)"/>
+  <text class="cy-l" x="462" y="744">YES</text>
+
+  <!-- 8. done -->
+  <rect class="cy-end" x="350" y="774" width="200" height="54" rx="10"/>
+  <text class="cy-t" x="450" y="807" text-anchor="middle">Done</text>
+</svg>
