@@ -22,6 +22,9 @@ Concrete beats open-ended: "web, mobile or a Telegram bot?" gets an answer;
 - **What does done look like?** The moment you'd say "yes, that's it".
 - **How long should this live?** Throwaway experiment, weekend tool, or
   something that has to survive a year.
+- **Will this go to `main`?** If yes it is R2 at least (tests first, review),
+  and a ticket exists before any code. If it touches tenant isolation, authz,
+  migrations, pipelines or the chat gateway, say so now: the critic is mandatory (as it is near a core capability).
 
 ## Anything a person will open (page, link, app, file you hand over)
 
@@ -64,7 +67,8 @@ your machine.
 - What did you expect, what happened instead, and how do I reproduce it?
 - When did it last work? Anything change around then?
 - Is the fast fix acceptable, or do you want the root cause?
-- Should this get a regression test?
+- What is the smallest case that reproduces it? That becomes the first test,
+  written before the fix (R2+ always; it is not optional there).
 
 ## Refactor / cleanup
 

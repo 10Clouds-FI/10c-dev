@@ -9,7 +9,7 @@
     {
       "name": "10c-dev",
       "source": "./",
-      "description": "Ticket-driven build cycle for Claude Code: rung ladder, interview, live-app verification, self code-review, adversarial critic, and a shared session board."
+      "description": "Ticket-driven build cycle for Claude Code: rung ladder, interview, spec, tests first from a separate agent, live-app verification, independent code review, a critic mandatory on risky changes, CI and production checks, and a shared board."
     }
   ]
 }

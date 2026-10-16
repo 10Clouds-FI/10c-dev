@@ -1,8 +1,7 @@
 # Review report output format
 
 The report skeleton the `code-review` skill produces at workflow step 8.
-Callers (the `implement` skill's self-review step, or any automation wrapping
-this skill) consume the verdict and the blocker/major findings from this
+Callers (the `code-review-agent`, or any automation wrapping this skill) consume the verdict and the blocker/major findings from this
 structure — keep the section headings and the severity names exactly as written
 (emojis decorate; parsers key on the text).
 
@@ -47,10 +46,15 @@ assertions. Same shape: `file:line`, what, why it matters, fix.}
 
 ### 🔹 Minor
 {Convention violations, suboptimal patterns, readability — each with a concrete
-suggestion.}
+suggestion and a disposition: **fix now** (file already in the diff) or
+**record for later** (any other file).}
 
 ### 💅 Nit
-{Style suggestions, optional polish. Author's call.}
+{Style suggestions, optional polish. Same disposition as minors.}
+
+### 📝 Record for later
+{Every finding marked "record for later", one line each with `file:line`. The
+caller posts this block as a comment on the ticket. Omit when empty.}
 
 ## 💥 Breaking Changes
 - [ ] No exported/public symbol removed or renamed without a deprecation path

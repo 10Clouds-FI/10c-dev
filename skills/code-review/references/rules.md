@@ -25,7 +25,7 @@ conflict, the stricter rule wins.
 ## This skill specifically
 
 - It is the read-only review engine: it reviews the unit it was given, takes no tracker-item
-  claim, and mutates no labels. The caller (the `implement` skill's self-review step, or any
+  claim, and mutates no labels. The caller (the `code-review-agent`, or any
   automation wrapping it) owns the claim protocol, label transitions, and verdict submission.
 - It defines no chaining reference lines; its machine-readable contract is the report structure
   in `references/output-format.md` and the **approve** / **request changes** verdict, which is

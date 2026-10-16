@@ -297,6 +297,132 @@ class BoardTest(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertEqual(json.loads(path.read_text())["session_id"], self.me)
 
+    # --- pre-edit, auto stack, commit ownership, critic ----------------------------------
+
+    def bash(self, sid: str, command: str, phase: str = "pre-bash"):
+        return self.run_cmd(
+            phase, self.hook(sid, tool_name="Bash", tool_input={"command": command})
+        )
+
+    def decision(self, out: str) -> dict:
+        return json.loads(out)["hookSpecificOutput"] if out else {}
+
+    def test_editing_a_neighbours_file_asks_once(self) -> None:
+        self.run_cmd("set", self.hook(self.peer), "--ticket", "ABC-7")
+        self.run_cmd(
+            "touch",
+            self.hook(self.peer, tool_name="Edit", tool_input={"file_path": f"{self.repo}/s.ts"}),
+        )
+        edit = self.hook(self.me, tool_name="Edit", tool_input={"file_path": f"{self.repo}/s.ts"})
+        _, out, _ = self.run_cmd("pre-edit", edit)
+        d = self.decision(out)
+        self.assertEqual(d["permissionDecision"], "ask")
+        self.assertIn("session-peer (ABC-7)", d["permissionDecisionReason"])
+        _, again, _ = self.run_cmd("pre-edit", edit)
+        self.assertEqual(again, "")
+        other = self.hook(self.me, tool_name="Edit", tool_input={"file_path": f"{self.repo}/o.ts"})
+        self.assertEqual(self.run_cmd("pre-edit", other)[1], "")
+
+    def test_pre_edit_returns_area_rules_once_per_path(self) -> None:
+        self.write_config(rules={"src/api": [".claude/rules/backend.md"]})
+        edit = self.hook(
+            self.me, tool_name="Write", tool_input={"file_path": f"{self.repo}/src/api/x.py"}
+        )
+        d = self.decision(self.run_cmd("pre-edit", edit)[1])
+        self.assertIn(".claude/rules/backend.md", d["additionalContext"])
+        self.assertNotIn("permissionDecision", d)
+        self.assertEqual(self.run_cmd("pre-edit", edit)[1], "")
+
+    def test_app_start_and_playwright_raise_stack_in_use_and_it_goes_stale(self) -> None:
+        self.write_config(app={"start": "make dev"})
+        self.bash(self.peer, "make dev")
+        _, out, _ = self.bash(self.me, "make recreate")
+        self.assertIn("stack-in-use", json.loads(out)["hookSpecificOutput"]["permissionDecisionReason"])
+        self.run_cmd("set", self.hook(self.peer), "--phase", "reviewing")
+        self.assertEqual(self.bash(self.me, "make recreate")[1], "")
+        self.run_cmd(
+            "pre-mcp", self.hook(self.peer, tool_name="mcp__playwright__browser_click")
+        )
+        self.assertNotEqual(self.bash(self.me, "make recreate")[1], "")
+        path = self.board.own_path(str(self.repo), self.peer)
+        rec = json.loads(path.read_text())
+        rec["blockers"][0]["touched"] = "2020-01-01T00:00:00+00:00"
+        path.write_text(json.dumps(rec))
+        self.assertEqual(self.bash(self.me, "make recreate")[1], "")
+
+    def commit_as(self, sid: str, name: str) -> None:
+        self.bash(sid, "git commit")
+        (self.repo / name).write_text(name)
+        self.sh("git", "add", name)
+        self.sh("git", "commit", "-q", "-m", f"add {name}")
+        self.bash(sid, "git commit", "post-bash")
+
+    def test_push_names_the_owner_of_foreign_commits(self) -> None:
+        bare = Path(self.tmp.name) / "bare.git"
+        self.sh("git", "init", "-q", "--bare", str(bare))
+        self.sh("git", "remote", "add", "origin", str(bare))
+        self.sh("git", "push", "-q", "-u", "origin", "main")
+        self.run_cmd("set", self.hook(self.peer), "--ticket", "ABC-9")
+        self.commit_as(self.peer, "p.txt")
+        self.run_cmd("end", self.hook(self.peer))
+        self.register_session(self.peer, "session-peer", pid=2_147_000_000)
+        self.commit_as(self.me, "m.txt")
+        _, out, _ = self.bash(self.me, "git push")
+        reason = self.decision(out)["permissionDecisionReason"]
+        self.assertIn("add p.txt", reason)
+        self.assertIn("session-peer, ABC-9", reason)
+        self.assertNotIn("add m.txt", reason)
+
+    def test_push_range_and_overlap_follow_the_configured_base(self) -> None:
+        bare = Path(self.tmp.name) / "bare.git"
+        self.sh("git", "init", "-q", "--bare", str(bare))
+        self.sh("git", "remote", "add", "up", str(bare))
+        self.sh("git", "push", "-q", "up", "main:develop")
+        self.write_config(git={"baseBranch": "develop", "remote": "up"})
+        self.commit_as(self.me, "m.txt")
+        self.assertEqual(self.board.push_range(str(self.repo)), "up/develop..HEAD")
+        self.run_cmd(
+            "touch",
+            self.hook(self.peer, tool_name="Edit", tool_input={"file_path": f"{self.repo}/m.txt"}),
+        )
+        _, out, _ = self.run_cmd("overlap")
+        self.assertIn("m.txt", out)
+
+    def test_own_commits_push_without_asking(self) -> None:
+        bare = Path(self.tmp.name) / "bare.git"
+        self.sh("git", "init", "-q", "--bare", str(bare))
+        self.sh("git", "remote", "add", "origin", str(bare))
+        self.sh("git", "push", "-q", "-u", "origin", "main")
+        self.commit_as(self.me, "m.txt")
+        self.assertEqual(self.bash(self.me, "git push")[1], "")
+
+    def test_risky_push_needs_a_current_critic_pass(self) -> None:
+        bare = Path(self.tmp.name) / "bare.git"
+        self.sh("git", "init", "-q", "--bare", str(bare))
+        self.sh("git", "remote", "add", "origin", str(bare))
+        self.sh("git", "push", "-q", "-u", "origin", "main")
+        self.write_config(risky=[{"label": "billing", "paths": ["src/billing"]}, "migrations"])
+        (self.repo / "src" / "billing").mkdir(parents=True)
+        self.commit_as(self.me, "src/billing/x.py")
+        reason = self.decision(self.bash(self.me, "git push")[1])["permissionDecisionReason"]
+        self.assertIn("critic", reason)
+        self.assertIn("src/billing/x.py (billing)", reason)
+        self.run_cmd("set", self.hook(self.me), "--critic", "pass")
+        self.assertEqual(self.bash(self.me, "git push")[1], "")
+        self.run_cmd(
+            "touch",
+            self.hook(self.me, tool_name="Edit", tool_input={"file_path": f"{self.repo}/a.txt"}),
+        )
+        self.assertIn("stale", self.bash(self.me, "git push")[1])
+        _, ov, _ = self.run_cmd("overview", None, "--json")
+        self.assertEqual(json.loads(ov)[0]["critic"]["verdict"], "PASS")
+
+    def test_default_risky_labels_match_common_paths(self) -> None:
+        cwd = str(self.repo)
+        self.assertEqual(self.board.risky_hit("app/migrations/0002_x.py", cwd), "migrations")
+        self.assertEqual(self.board.risky_hit("core/tenant/models.py", cwd), "tenant isolation")
+        self.assertEqual(self.board.risky_hit("web/Button.tsx", cwd), "")
+
 
 if __name__ == "__main__":
     unittest.main()

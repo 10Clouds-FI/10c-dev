@@ -16,8 +16,9 @@ production when the human wanted to poke at an idea, declaring the work done
 without anyone reviewing it, and leaving behind a pile of code nobody dares
 delete. This skill exists to stop all five.
 
-**Run the phases in order.** Ceremony scales with the rung (§1); the phases
-themselves do not disappear.
+**Run the phases in order:** rung, interview, spec, tests first, code, proof,
+review. Ceremony scales with the rung (§1); the phases themselves do not
+disappear.
 
 ---
 
@@ -29,14 +30,18 @@ sentence, so the human can override it:
 | Rung | What it is | Output | Tests | Deps / infra |
 |---|---|---|---|---|
 | **R0 Probe** | "Can this even work?", "does this API return what we need?" | An **answer**, not code you keep | none | throwaway, label it |
-| **R1 PoC** | Thinnest thing that shows the idea working end to end, happy path only | Running code, ugly is fine | none | none new unless unavoidable |
-| **R2 MVP** | Something actually usable for its purpose | Working feature | core paths covered | only what the feature needs |
-| **R3 Hardened** | Edge cases, failures, polish, docs | Production-shaped | unit + e2e where meaningful | as needed |
+| **R1 PoC** | Thinnest thing that shows the idea working end to end, happy path only | Running code, ugly is fine | optional (test-design agent) | none new unless unavoidable |
+| **R2 MVP** | Something actually usable for its purpose | Working feature | unit + e2e, main paths | only what the feature needs |
+| **R3 Hardened** | Edge cases, failures, polish, docs | Production-shaped | unit + e2e, edge cases and failures too | as needed |
 
 Rules:
 
 - **Default to the lowest rung that answers the request.** "Build an app that
   splits trip expenses" is R1, not R3.
+- **Only R2 and R3 go to `main`.** R0 and R1 output stays local or throwaway.
+  If it is going to ship, step up to R2 first, with the developer's agreement.
+  A one-line fix that ships is R2 with a small ceremony (a reproducing test, a
+  short spec), not R0.
 - **The ratchet is one-way.** You may discover mid-task that the work is
   heavier than you thought — stop, say so, get agreement, step up. You never
   quietly step *down*, and you never climb *up* on your own initiative.
@@ -111,6 +116,10 @@ Rung:        R1
 Keep it short. It is a leash for you, not a deliverable for them. Track the
 steps with TodoWrite for anything beyond two steps.
 
+These "done when" conditions are the contract. They feed the tests (§4), the
+end check (§6) and the critic, so write them as user observations, not as facts
+about your code.
+
 **Write "done when" as what the human would observe, through the door they
 will actually use.** For anything a person opens — a page, a link you hand
 over, an app — name the door in the condition itself: *"a client opens the
@@ -134,7 +143,34 @@ Two failure modes this closes, both of which look like success while you work:
 
 ---
 
-## 4. Build the smallest thing that satisfies the spec
+## 4. Tests first (R2+)
+
+**Mandatory at R2 and R3, optional at R1, never at R0.** The tests are written
+from the spec, by an agent that does not write the code, **before the code
+exists**. Spawn the `test-design-agent` (`agents/test-design-agent.md`) with the
+ticket (or topic), the rung, the repo path, the "done when" conditions and the out-of-scope list. Give it
+no plan, no conversation and no implementation: that is what keeps the tests
+honest.
+
+- It writes **failing** unit tests and e2e tests. Every "done when" condition
+  that describes a user flow gets an e2e test. For a bug, the first test
+  reproduces the bug.
+- Run them and confirm they fail for the right reason (missing behaviour, not a
+  typo or a broken import). A test that passes before the code exists asserts
+  nothing.
+- Test at the level of **the problem a module solves**, not at the level of
+  trivial functions. "Does the splitter settle debts correctly" yes; "does this
+  getter return the field" no.
+- Tests are the executable half of the project model (see below): if the model
+  says the module exists to solve problem X, there should be a test asserting X.
+- **You may not weaken, delete or edit those tests to make them pass.** If one
+  is wrong, say so to the developer and change it only with their agreement.
+  If the internals change but the problem solved does not, the tests should not
+  need to change; if they do, one of the two was wrong, and you say which.
+
+---
+
+## 5. Write the code, the smallest that satisfies the spec
 
 - No feature beyond what was asked. No speculative flexibility, configurability
   or extension points.
@@ -155,21 +191,13 @@ reorder imports or refactor things that are not in your way. Every changed line
 should trace to the request or to your own mess. Cleanup is phase 8, and it is
 deliberate, not a side effect.
 
----
+**Show it step by step.** The developer accepted the plan once (§3), and Claude
+Code's edit prompts cover each edit, so do not add pauses. After each plan step,
+say in a line or two what changed and what that step's check returned, then
+carry on. If a check fails or the plan has to change, stop and say so.
 
-## 5. Tests, when they mean something (R2+)
-
-- Test at the level of **the problem a module solves**, not at the level of
-  individual trivial functions. "Does the splitter settle debts correctly" —
-  yes. "Does this getter return the field" — no.
-- Prefer: write the check first, watch it fail, make it pass. For a bug: a test
-  that reproduces it, then the fix.
-- Tests are the executable half of the project model (see below): if the model
-  says the module exists to solve problem X, there should be a test asserting X.
-  When a new problem is added to the model, add its test.
-- If the internals of a module change but the problem it solves does not, the
-  tests should not need to change. If they do, one of the two was wrong — say so.
-- R0/R1 get no tests. Don't argue for them there.
+**Run the tests from §4 as you go.** The code is done when they pass, not
+before. At R2+ they are the target; at R1 run whatever check the plan named.
 
 ---
 
@@ -197,6 +225,19 @@ itself.
   skipped did not break; they were never established, so nothing will report them
   as broken.
 
+**End with a check against the spec.** Walk the "done when" conditions from §3
+one by one and post the result:
+
+```
+Condition                         How it was observed          Result
+a client opens the link, signs in  browser, logged-out window   ✓
+the export lists 3 columns         opened the downloaded file   ✗ (2 columns)
+rows older than a year are hidden  no such data locally         unverified (no data)
+```
+
+Each condition gets ✓, ✗ or "unverified (why)". Any ✗ goes back to §5. An
+"unverified" is reported to the developer, never rounded up to ✓.
+
 Cost of skipping this, measured: a hand-migrated database left a schema owned by
 the wrong role. Reads worked, so the account looked healthy, while the sync
 reported success 118 times and wrote nothing for 29 hours. Found by the client,
@@ -204,22 +245,25 @@ not by us. Both fixes took five minutes each; only the looking was missing.
 
 ## 7. Review the diff before you call it done (R2+)
 
-**Mandatory at R2+, on request at R1, never at R0.** Load the `code-review`
-skill (installed alongside this one) and run it over your own diff — the current
-branch against its merge-base, uncommitted changes included. It gives you what
-self-satisfaction does not: a validation gate that actually runs, a
-severity-ranked list (blocker / major / minor / nit), a breaking-change
-checklist, and a mechanical verdict.
+**Mandatory at R2+, on request at R1, never at R0.** The review is **independent**:
+spawn the `code-review-agent` in a fresh context and give it only the diff range (the
+current branch against its merge-base, uncommitted changes included), the ticket key and
+the spec. Never the build conversation: a reviewer that shares your context shares your
+blind spots. It runs the `code-review` skill and returns a validation gate that actually
+ran, a severity-ranked list (blocker / major / minor / nit), a breaking-change checklist,
+and a mechanical verdict.
 
-- Fix every **blocker** and **major** before showing the work. Minors and nits
-  you list for the human; do not silently expand scope to fix them.
+- You fix every **blocker** and **major** yourself, then show the developer what you
+  fixed. Minors and nits follow the disposition the review gives them (fix now if the
+  file is already in the diff, otherwise a comment on the ticket); do not silently expand
+  scope.
 - The validation gate comes from `verify.commands` (plus `verify.byArea` for the
   touched paths) in the repo's `.claude/task-flow.json`. If the repo has no such
   file, **do not scaffold config into someone's repo** — that is exactly the
   "plan file in their repo" this skill forbids. Derive the gate from what the
   repo already has (`package.json` scripts, `Makefile`, CI config, `CLAUDE.md`)
   and state which commands you ran. Only write the config when the human asks.
-- The review is of **your** diff. A finding about pre-existing code goes into
+- The review covers **this** diff. A finding about pre-existing code goes into
   phase 8's list, not into a drive-by fix.
 
 ---
@@ -278,7 +322,9 @@ conversation and are read by people who were not in it.
 | "While I'm here I'll also…" | You are not here for that. Note it, move on. |
 | "They'll want this configurable later" | They'll ask later. Later is cheaper than wrong now. |
 | "It needs a proper architecture" | At R1 it needs to run. |
-| "Tests would slow down this prototype" | Correct — that's why R0/R1 have none. Don't use it as an excuse at R2. |
+| "Tests would slow down this prototype" | Correct — that's why R0 has none. Don't use it as an excuse at R2. |
+| "I'll write the tests after, I know what the code does" | Tests written from the code assert the code. At R2+ they come first, from the spec, from another agent. |
+| "It's a one-liner, call it R0 and push" | R0 and R1 never reach `main`. A shippable fix is R2 with a small ceremony. |
 | "The old code still works, leave it" | It works and it is now pointless. That is exactly what phase 8 is for. |
 | "The job says ok, so it works" | It says it ran. Read the data it was supposed to write. |
 | "I fixed the error it showed me" | You fixed the one that surfaced. List the rest from the code. |

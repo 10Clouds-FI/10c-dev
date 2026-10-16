@@ -528,15 +528,29 @@ def build_cycle(type_: Type) -> str:
     )
     o.append(T("/10c-dev:implement ABC-123", L + PAD, y + PAD + 18, 16, "medium", WHITE))
     o.append(side_effect(type_, L + W - PAD, y + PAD + 18, "auto", "moves ticket", 12, anchor="end"))
-    o.append(T("a ticket key, or LOCAL-<date>", L + PAD, y + PAD + 40, 13, "regular", MIST_GREEN))
+    o.append(T("every change on main has one", L + PAD, y + PAD + 40, 13, "regular", MIST_GREEN))
     ticket_bottom = y + 70
+    # where work can start: a Slack thread or a client message, optional, so dashed
+    o.append(node(20, y + 8, 150, 54, dashed=True, stroke=MIST_GREEN, width=1.6, fill=DEEP_BLUE))
+    o.append(T("Slack thread", 32, y + 31, 14, "medium", WHITE))
+    o.append(T("or a client message", 32, y + 49, 12, "regular", MIST_GREEN))
+    o.append(line(f"M172 {y + 35} H {L - 3}", width=2.0))
+    o.append(T("agent drafts,", 24, y + 88, 12, "regular", MIST_GREEN))
+    o.append(T("you approve", 24, y + 104, 12, "regular", MIST_GREEN))
     y = ticket_bottom + GAP
+
+    # ---- project model ------------------------------------------------------ #
+    par_top = y
+    pmh = block(y, "Project model", "— what the product is for", marker=("auto", "read first"))
+    down(ticket_bottom, y)
+    y = y + pmh + GAP
 
     # ---- Build ------------------------------------------------------------ #
     build_top = y
     mark = len(o)              # the Build frame is inserted here once its height is known
     o.append(T("Build", BX + PAD + 4, y + PAD + 26, 27, "medium", WHITE))
     inner_x, inner_w = BX + PAD, BW - PAD * 2
+    o.append(line(f"M{MID} {y - GAP + 2} V {y - 3}"))
     sy = y + PAD + 44
     strip(sy, 1, "Rung",
           "R0 probe · R1 PoC · R2 MVP · R3 hardened — the ceremony scales with it",
@@ -545,13 +559,16 @@ def build_cycle(type_: Type) -> str:
     strip(iy, 2, "Interview", "until the goal is clear", inner_x, inner_w)
     ry = iy + 36 + 12
     cw = (inner_w - 20) / 2
-    strip(ry, 3, "Tiny spec", "what done means", inner_x, cw, h=54)
-    strip(ry, 4, "Write the code", "in your checkout", inner_x + cw + 20, cw, h=54,
+    strip(ry, 3, "Spec", "goal, out of scope, 2–4 done-when", inner_x, inner_w)
+    ry += 36 + 12
+    strip(ry, 4, "Tests first", "from done-when", inner_x, cw, h=54,
+          marker=("auto", "a separate agent writes them"))
+    strip(ry, 5, "Write the code", "area rules loaded", inner_x + cw + 20, cw, h=54,
           marker=("auto", "edits files"))
     build_h = (ry + 54 + PAD) - build_top
     o.insert(mark, node(BX, build_top, BW, build_h, stroke=MIST_GREEN, width=2.2, rx=16))
     build_bottom = build_top + build_h
-    # step 3 leads into step 4
+    # step 4 leads into step 5
     o.append(line(f"M{inner_x + cw + 3} {ry + 27} H {inner_x + cw + 17}", width=2.0))
 
     # The human stands further right than the other two, because this row's labels
@@ -576,29 +593,38 @@ def build_cycle(type_: Type) -> str:
 
     # ---- review ------------------------------------------------------------ #
     review_top = y
-    rh = block(y, "Review your own diff")
+    rh = block(y, "Code review", "— an agent reviews the diff",
+               marker=("auto", "blockers and majors fixed"))
     review_bottom = y + rh
     down(verify_bottom, review_top)
     y = review_bottom + GAP
 
+    # ---- cleanup ------------------------------------------------------------- #
+    cleanup_top = y
+    clh = block(y, "Cleanup", "— dead code out, project model updated")
+    cleanup_bottom = y + clh
+    down(review_bottom, cleanup_top)
+    y = cleanup_bottom + GAP
+
     # ---- the critic — the one block that keeps two lines ------------------- #
     critic_top = y
     ch = block(
-        y, "The adversarial critic",
+        y, "Critic", "— mandatory on risky or core changes",
         body=[
-            "It reads only the ticket — so it tests what was asked for,",
-            "not what was built — then tries to break the running app.",
+            "Empty context: only the ticket, the done-when conditions and the",
+            "running app, never the code. Tries to break it. PASS or FAIL.",
         ],
         marker=("auto", "drives your app"),
         dashed=True, stroke=MIST_GREEN,
     )
     critic_bottom = y + ch
-    down(review_bottom, critic_top)
+    down(cleanup_bottom, critic_top)
     y = critic_bottom + GAP
 
     # ---- commit and push --------------------------------------------------- #
     commit_top = y
-    qh = block(y, "Commit and push?", "— only on your yes", marker=("ask", "asks first"))
+    qh = block(y, "Commit and push?", "— under your name", marker=("ask", "asks first"),
+               body=("to main, or as a pull request for a second review",))
     commit_bottom = y + qh
     down(critic_bottom, commit_top, label="PASS (or skipped)")
     o.append(person(PX, commit_top + 20, 0.78))
@@ -606,27 +632,54 @@ def build_cycle(type_: Type) -> str:
     y = commit_bottom + GAP
 
     # the critic can be skipped: a bracket around that one block
-    o.append(line(f"M{L} {review_bottom - 10} H 156 V {commit_top + 24} H {L - 4}",
+    o.append(line(f"M{L} {cleanup_bottom - 10} H 156 V {commit_top + 24} H {L - 4}",
                   width=1.5, opacity=0.85))
-    o.append(T("or skip the critic", 24, review_bottom - 16, 12, "regular", MIST_GREEN))
+    o.append(T("or skip it,", 62, cleanup_bottom + 14, 12, "regular", MIST_GREEN))
+    o.append(T("never on risky", 62, cleanup_bottom + 30, 12, "regular", MIST_GREEN))
+
+    # the shared board: parallel sessions see each other, from the project model to the commit
+    o.append(f'<path d="M14 {par_top} V {commit_bottom}" stroke="{DEEP_TEAL}" stroke-width="5" fill="none"/>')
+    pmid = (par_top + build_bottom) / 2
+    o.append(
+        f'<g transform="rotate(-90 32 {pmid})">'
+        + T("PARALLEL SESSIONS SEE EACH OTHER — SHARED BOARD", 32, pmid + 4, 11, "medium",
+            MIST_GREEN, "middle", tracking=1.2)
+        + "</g>"
+    )
 
     # ---- both failure loops, on the right at different offsets ------------- #
     code_right = inner_x + cw + 20 + cw           # right edge of step 4
     o.append(loop(f"M{L + W} {verify_top + 22} H 790 V {ry + 20} H {code_right + 4}"))
     o.append(T("failed → fix in", 620, verify_top - 12, 12.5, "regular", MIST_GREEN))
-    o.append(badge(type_, 620 + type_.measure("failed → fix in ", 12.5) + 8, verify_top - 16, 4))
+    o.append(badge(type_, 620 + type_.measure("failed → fix in ", 12.5) + 8, verify_top - 16, 5))
     o.append(loop(f"M{L + W} {critic_top + 30} H 856 V {ry + 40} H {code_right + 4}"))
     o.append(T("FAIL → back to", 660, verify_bottom + 26, 12.5, "medium", MIST_GREEN))
     o.append(badge(type_, 660 + type_.measure("FAIL → back to ", 12.5, "medium") + 8,
-                   verify_bottom + 22, 4))
+                   verify_bottom + 22, 5))
 
     # ---- on staging --------------------------------------------------------- #
+    def pill(y0, label, sub):
+        o.append(f'<rect x="{L + 40}" y="{y0}" width="{W - 80}" height="34" rx="17" '
+                 f'fill="{DEEP_BLUE}" stroke="{MIST_GREEN}" stroke-width="2"/>')
+        o.append(T(label, L + 60, y0 + 22, 14, "medium", WHITE))
+        o.append(T(sub, L + 60 + type_.measure(label, 14, "medium") + 9, y0 + 22, 12.5,
+                   "regular", MIST_GREEN))
+
+    ci1_top = y
+    pill(y, "CI: unit tests", "— only a green build is deployed")
+    down(commit_bottom, ci1_top)
+    y = ci1_top + 34 + GAP
     staging_top = y
-    sh = block(y, "On staging", "— ticket In Review", marker=("auto", "ticket → In Review"),
+    sh = block(y, "Staging", "— main is staging", marker=("auto", "ticket → In Review"),
                fill=DEEP_BLUE)
     staging_bottom = y + sh
-    down(commit_bottom, staging_top)
+    down(ci1_top + 34, staging_top)
     y = staging_bottom + GAP
+    ci2_top = y
+    pill(y, "CI: e2e tests", "— Playwright on the full stack")
+    down(staging_bottom, ci2_top, label="promote to production", lx=MID + 12)
+    staging_bottom_for_check = ci2_top + 34
+    y = staging_bottom_for_check + GAP
 
     # ---- the human check ----------------------------------------------------- #
     dhw, dhh = 180, 36
@@ -637,7 +690,7 @@ def build_cycle(type_: Type) -> str:
     )
     o.append(T("Checked on production", MID, dcy - 4, 15.5, "medium", WHITE, "middle"))
     o.append(T("by a human?", MID, dcy + 16, 15.5, "medium", WHITE, "middle"))
-    down(staging_bottom, dcy - dhh)
+    down(staging_bottom_for_check, dcy - dhh)
     o.append(person(PX, dcy - 8, 0.78))
     o.append(talk(PX, dcy - 4, MID + dhw + 4, PX - 32, "you check", type_, label_dy=32))
     diamond_bottom = dcy + dhh
@@ -720,19 +773,20 @@ def build_cycle(type_: Type) -> str:
     lg(1, 1, lambda x, yy: mark_auto(x + 14, yy, 7), "writes on its own")
     lg(1, 2, lambda x, yy: mark_ask(x + 14, yy, 8), "asks you first")
 
-    o.append(T("10Clouds · dev", 26, 54, 13, "medium", MIST_GREEN, opacity=0.85))
-    o.append(T("the build cycle", 26, 72, 12.5, "regular", MIST_GREEN, opacity=0.7))
 
     height = int(done_bottom + 22)
     alt = (
-        "The 10c-dev build cycle. The implement skill on a ticket key moves the ticket to In "
-        "Progress and opens Build, which holds the rung (R0 probe to R3 hardened), the "
-        "interview with the developer, the tiny spec and writing the code. Verify runs it on "
-        "the live app and fails back into step four. The diff is reviewed, then an optional "
-        "critic drives the running app: FAIL returns to step four, PASS goes on, and the "
-        "critic can be skipped. Commit and push happens only on your yes; the ticket waits on "
-        "staging In Review until a human checks production — yes reaches Done, a bug opens a "
-        "new ticket. Markers show which steps write outside the chat and which ask first."
+        "The 10c-dev build cycle. A Slack thread or client message is drafted into a ticket, "
+        "which moves to In Progress. The project model is read, then Build holds the rung (R0 "
+        "probe to R3 hardened), the interview, the spec, tests first from a separate agent, and "
+        "writing the code. Verify runs it on the live app and fails back into step five. A code "
+        "review agent reads the diff, then cleanup runs, then a critic with an empty context "
+        "drives the running app: mandatory on risky changes or near a core capability, FAIL "
+        "returns to step five. Commit "
+        "and push happens only on your yes, to main or as a pull request. CI unit tests gate "
+        "staging, where the ticket becomes In Review; CI e2e tests gate production; a human "
+        "check there reaches Done, and a bug opens a new ticket. Parallel sessions see each "
+        "other through a shared board."
     )
     return f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {CYCLE_W} {height}" \
 width="{CYCLE_W}" height="{height}" role="img" aria-label="{alt}">

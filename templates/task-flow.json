@@ -26,7 +26,7 @@
   "git": {
     "baseBranch": "main",
     "remote": "origin",
-    "mode": "pr",
+    "mode": "main",
     "branchPrefix": "feature/"
   },
   "verify": {
@@ -35,7 +35,32 @@
       "src/web": ["npm run lint", "npm run typecheck", "npm test"],
       "src/api": ["make api-lint", "make api-test"],
       "migrations": ["make migrate-check"]
-    }
+    },
+    "e2e": "npx playwright test"
+  },
+  "risky": [
+    "tenant isolation",
+    "authorization",
+    "migrations",
+    "pipelines",
+    { "label": "chat gateway", "paths": ["src/api/gateway/**"] }
+  ],
+  "owners": {
+    "src/api": "@api-team",
+    "migrations": "@db-owner",
+    "*": "codeowners"
+  },
+  "ci": {
+    "unit": {
+      "watch": "gh run list --commit {sha} --workflow ci.yml --json status,conclusion",
+      "blocksDeploy": true
+    },
+    "e2e": {
+      "watch": "gh run list --commit {sha} --workflow e2e.yml --json status,conclusion",
+      "blocksProduction": true
+    },
+    "staging": { "url": "https://staging.example.com", "deployed": "gh run list --commit {sha} --workflow deploy-staging.yml --json conclusion" },
+    "production": { "url": "https://app.example.com" }
   },
   "app": {
     "start": "make start",

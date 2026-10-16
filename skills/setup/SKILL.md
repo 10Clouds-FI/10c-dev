@@ -49,7 +49,8 @@ base branch and CI is not on GitHub — say so rather than blocking on it.
 
 Ask first: **does this team track work in Jira, or not?** ("none" is a valid answer — the
 workflow then runs entirely on synthetic `LOCAL-<date>-<time>` keys and skips every tracker
-call. If they say none, skip to Step 3.)
+call. Say plainly that with none, work stays local: a change cannot reach `main` without a
+real ticket. If they say none, skip to Step 3.)
 
 For Jira, try the MCP server first, then fall back to the bundled scripts.
 
@@ -141,8 +142,11 @@ The order that works:
 
 1. **Tracker** — `jira` or `none`. If `jira`: the site URL, the default project key, the board
    id, and the `cloudId` from Step 2a if you have it.
-2. **Git** — base branch, remote, and `mode`: `push-to-main` (the team commits straight to the
-   base branch) or `pr` (every change goes through a pull request). For `pr`, the branch prefix.
+2. **Git** — base branch, remote, and the default `mode`: `main` (commit straight to the base
+   branch) or `pr` (a pull request by default). Either can be chosen per change later. For `pr`,
+   the branch prefix. Check the commit identity: `git config user.name` and `user.email` must be
+   the developer's own; show them and confirm. Commits are never made under another identity or
+   a bot.
 3. **Verify commands** — what proves a change is good. The global `verify.commands` list, plus
    `verify.byArea` for path prefixes with their own suite (a frontend directory's tests, a
    backend's pytest). Run each one you propose at least once so you know it exists and passes.
@@ -154,7 +158,17 @@ The order that works:
    (shared routers, migration directories, lockfiles). The session board warns on these.
 7. **Stack commands** — the commands that restart or destroy the local stack, so the board can
    ask before one session yanks it from under another.
-8. **Reporting** — the language for ticket comments and the comment style.
+8. **Risky areas** — offer the default labels (tenant isolation, authorization, migrations,
+   pipelines, chat gateway) and ask which apply to this repo, what to add, and the path globs
+   that match each. A risky change gets a mandatory Critic.
+9. **Owners** — who approves a contract break per area: a path prefix → handle map, or
+   "use CODEOWNERS". If a `CODEOWNERS` file exists, propose that and show what it covers.
+10. **CI** — `ci.unit`, `ci.e2e`, the staging and production URLs, and `verify.e2e` (the local
+    e2e command). Read the CI config (`.github/workflows`, the pipeline file) and confirm two
+    gates: a **unit gate that blocks the deploy** to staging, and an **e2e gate that runs
+    before production**. Report either one that is missing; do not write CI for them. Propose a
+    `watch` command per gate and run it once on a recent commit to prove it returns something.
+11. **Reporting** — the language for ticket comments and the comment style.
 
 Then write the file, show the user the whole thing, and let them correct it before you finish.
 Only Slack channel ids, host names and command strings go in here; **no tokens, no cloud
@@ -184,8 +198,8 @@ Three checks, all with real output:
    `mcp__atlassian__getJiraIssue`. Ask the user for a key they know exists. Skipped when the
    tracker is `none`.
 
-3. **The skills are loaded:** `/10c-dev:implement` resolves, and `@critique-agent` is listed by
-   `/agents`. Skills and agents are read at session start; if the files exist but nothing
+3. **The skills are loaded:** `/10c-dev:implement` resolves, and `@critique-agent`, `@test-design-agent` and `@code-review-agent` are listed by
+   `/agents`, and `/10c-dev:release-check` resolves. Skills and agents are read at session start; if the files exist but nothing
    resolves, run `/reload-plugins` or start a fresh session.
 
 # Done

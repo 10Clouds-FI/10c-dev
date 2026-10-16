@@ -1,6 +1,6 @@
 ---
 name: code-review
-description: "Review a diff, branch, or PR against correctness, security, breaking-change, and quality standards — runs the validation gate, applies the built-in checklist plus any repo-local one, and produces severity-ranked findings with an approve/request-changes verdict. The review engine behind the self-review step of the build cycle."
+description: "Review a diff, branch, or PR against correctness, security, breaking-change, and quality standards — runs the validation gate, applies the built-in checklist plus any repo-local one, and produces severity-ranked findings with an approve/request-changes verdict. The review engine behind the independent review step of the build cycle, run by the code-review-agent in a fresh context."
 metadata:
   version: 1.0.0
   title_en: Code review
@@ -44,7 +44,7 @@ Review code changes against the repository's architecture, security, convention,
 - a breaking-change checklist,
 - a verdict: **approve** or **request changes** (see Severity and Verdict).
 
-Callers (the `implement` skill's self-review step, or any automation wrapping this skill) read the verdict and the blocker/major findings to decide whether to continue — but they surface **this whole report, verbatim in its `references/output-format.md` structure (emoji headings, full sentences)**, as the review body. It is the reviewer-facing deliverable, not an internal analysis to condense into a short summary; keep the verdict and findings unambiguous and the report complete.
+Callers (the `code-review-agent`, or any automation wrapping this skill) read the verdict and the blocker/major findings to decide whether to continue — but they surface **this whole report, verbatim in its `references/output-format.md` structure (emoji headings, full sentences)**, as the review body. It is the reviewer-facing deliverable, not an internal analysis to condense into a short summary; keep the verdict and findings unambiguous and the report complete.
 
 ## Review Workflow
 
@@ -101,7 +101,11 @@ verdicts (`references/rules.md`, Reporting style).
 | **blocker** | Security vulnerability, data corruption or loss risk, cross-scope data leak, missing permission check, breaking contract change without a deprecation path, failing validation gate | MUST fix before merge |
 | **major** | Correctness bug on a realistic path, missing regression test for a bug fix, weakened assertions, unbounded query on growing data, unresolved race on shared state, architecture violation | MUST fix before merge unless the maintainer explicitly accepts and documents the risk |
 | **minor** | Convention violation, suboptimal pattern, missing best practice, readability problem | Should fix; does not block on its own |
-| **nit** | Style suggestion, optional polish | Author's call |
+| **nit** | Style suggestion, optional polish | Optional |
+
+Every minor and nit carries a **disposition**: **fix now** when its file is already in the
+diff, **record for later** otherwise. Records go into a comment on the ticket. List them in a
+"Record for later" block so the caller can post it.
 
 Verdict rule:
 

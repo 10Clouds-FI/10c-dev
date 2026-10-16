@@ -9,10 +9,17 @@ Hook commands (stdin = the hook's JSON), wired in hooks/hooks.json:
 
     register    SessionStart      create the record, print the neighbour digest
     prompt      UserPromptSubmit  guess the ticket key from the prompt, print the digest if changed
+    pre-edit    PreToolUse Edit/Write/...  "ask" before editing a file a live neighbour is
+                                  editing; once per path, the area rule files to read first
     touch       PostToolUse       Edit/Write/...: record the file; hotspot -> blocker
-    pre-bash    PreToolUse Bash   snapshot dirty files; "ask" before git push / a stack command
-                                  when a neighbour is in the way
-    post-bash   PostToolUse Bash  attribute files the command changed; digest as additionalContext
+    pre-mcp     PreToolUse mcp__*playwright*  raise `stack-in-use` (browser use = local stack use)
+    pre-bash    PreToolUse Bash   snapshot dirty files and HEAD; raise `stack-in-use` on the app
+                                  start / a stack command; "ask" before git push / a stack command
+                                  when a neighbour is in the way, before a push that carries
+                                  another session's commits, and before a push that touches a
+                                  risky area without a critic PASS
+    post-bash   PostToolUse Bash  attribute files the command changed; record the SHAs a
+                                  git commit created; digest as additionalContext
     end         SessionEnd        remove the record
 
 CLI (session from $CLAUDE_CODE_SESSION_ID when needed):
@@ -20,7 +27,7 @@ CLI (session from $CLAUDE_CODE_SESSION_ID when needed):
     overview [--json]                 live sessions on this repo
     overlap                           files this session and a neighbour both touch
     check-stack | check-push          exit 1 and explain when a neighbour holds the blocker
-    set --ticket K | --phase P | --blocker T [--note N] | --clear-blocker T
+    set --ticket K | --phase P | --blocker T [--note N] | --clear-blocker T | --critic PASS|FAIL
 
 Per-repo configuration lives in `<repo>/.claude/task-flow.json`:
 
@@ -34,6 +41,14 @@ Per-repo configuration lives in `<repo>/.claude/task-flow.json`:
                    is matched at the start of a shell command (after `;`, `&&`, `|` or `(`).
                    Defaults to `make (start|stop|restart|recreate|down|nuke)` and
                    `docker compose (up|down|restart)`.
+    git            `baseBranch` (default `main`) and `remote` (default `origin`): the range a
+                   push carries and the base `overlap` diffs against.
+    app.start      the command that brings the local stack up; running it raises `stack-in-use`.
+    rules          map of path prefix -> rule files; the first edit of a path in a session gets
+                   the matching files back as context ("read these before editing").
+    risky          array of risky area labels (default: tenant isolation, authz, migrations,
+                   pipelines, chat gateway) or globs/path prefixes. A push whose diff touches
+                   one needs a recorded critic PASS newer than the last edit, or it asks.
 
 Every command fails open: a broken board prints one stderr line and exits 0.
 """
@@ -74,10 +89,24 @@ MAX_FILES_SHOWN = 3
 STACK_BLOCKER = "stack-in-use"
 PUSH_BLOCKER = "pushing-main"
 HOTSPOT_BLOCKER = "hotspot"
+# An auto-raised `stack-in-use` goes stale after this long without stack activity.
+STACK_IDLE_SECONDS = 900
+COMMIT_RE = re.compile(r"(?:^|[;&|(]\s*)git\b[^;&|\n]*?\b(?:commit|cherry-pick|revert|am)\b", re.MULTILINE)
+MAX_COMMITS_LEDGER = 2000
+DEFAULT_RISKY = ["tenant isolation", "authz", "migrations", "pipelines", "chat gateway"]
+# Label -> path globs, so the PDF's plain-language areas work with no per-repo setup.
+RISKY_GLOBS = {
+    "tenant": ["*tenant*"],
+    "authz": ["*authz*", "*auth/*", "*authentication*", "*permission*", "*rbac*"],
+    "auth": ["*authz*", "*auth/*", "*authentication*", "*permission*", "*rbac*"],
+    "migration": ["*migration*"],
+    "pipeline": ["*pipeline*", ".github/workflows/*", ".gitlab-ci*", "*.azure-pipelines*"],
+    "gateway": ["*gateway*"],
+}
 
 
 def now() -> str:
-    return datetime.now(UTC).astimezone().isoformat(timespec="seconds")
+    return datetime.now(UTC).astimezone().isoformat(timespec="milliseconds")
 
 
 def git(cwd: str, *args: str) -> str:
@@ -227,8 +256,25 @@ def neighbours(cwd: str, me: str) -> list[dict]:
     return [r for r in live_records(cwd) if r.get("session_id") != me]
 
 
+def blocker_stale(b: dict) -> bool:
+    """An auto-raised blocker nobody has refreshed for STACK_IDLE_SECONDS."""
+    if not b.get("auto"):
+        return False
+    try:
+        age = datetime.now(UTC) - datetime.fromisoformat(b.get("touched") or b["since"])
+    except (KeyError, ValueError):
+        return False
+
+    return age.total_seconds() > STACK_IDLE_SECONDS
+
+
 def holders(cwd: str, me: str, kind: str) -> list[tuple[dict, dict]]:
-    return [(r, b) for r in neighbours(cwd, me) for b in r.get("blockers", []) if b["type"] == kind]
+    return [
+        (r, b)
+        for r in neighbours(cwd, me)
+        for b in r.get("blockers", [])
+        if b["type"] == kind and not blocker_stale(b)
+    ]
 
 
 # --- per-repo configuration ----------------------------------------------------------------
@@ -280,19 +326,94 @@ def is_stack_command(command: str, cwd: str) -> bool:
     return False
 
 
+def app_start(cwd: str) -> str:
+    app = config(cwd).get("app")
+
+    return str(app.get("start") or "").strip() if isinstance(app, dict) else ""
+
+
+def is_app_start(command: str, cwd: str) -> bool:
+    start = app_start(cwd)
+    if not start:
+        return False
+
+    return re.search(STACK_PREFIX + re.escape(start), command, re.MULTILINE) is not None
+
+
+def matching_rules(path: str, cwd: str) -> list[str]:
+    rules = config(cwd).get("rules")
+    if not isinstance(rules, dict):
+        return []
+    found: list[str] = []
+    for prefix, files in rules.items():
+        key = str(prefix).rstrip("/")
+        hit = path == key or path.startswith(key + "/") or fnmatch.fnmatch(path, str(prefix))
+        if hit and isinstance(files, list):
+            found.extend(str(f) for f in files if str(f) not in found)
+
+    return found
+
+
+def risky_entries(cwd: str) -> list[tuple[str, list[str]]]:
+    """(label, explicit path globs) pairs. An entry is a label, a glob, or {label, paths[]}."""
+    configured = config(cwd).get("risky")
+    if not isinstance(configured, list):
+        return [(label, []) for label in DEFAULT_RISKY]
+    out: list[tuple[str, list[str]]] = []
+    for e in configured:
+        if isinstance(e, dict):
+            label = str(e.get("label") or "").strip()
+            paths = [str(x).strip() for x in e.get("paths") or [] if str(x).strip()]
+            if label or paths:
+                out.append((label or paths[0], paths))
+        elif str(e).strip():
+            text = str(e).strip()
+            out.append((text, [text] if re.search(r"[/*.]", text) else []))
+
+    return out
+
+
+def path_matches(path: str, pattern: str) -> bool:
+    key = pattern.rstrip("/")
+
+    return path == key or path.startswith(key + "/") or fnmatch.fnmatch(path, pattern)
+
+
+def risky_hit(path: str, cwd: str) -> str:
+    """The risky label that `path` falls under, or ''."""
+    low = path.lower()
+    for label, paths in risky_entries(cwd):
+        if paths:
+            if any(path_matches(path, g) for g in paths):
+                return label
+            continue
+        words = re.findall(r"[a-z]+", label.lower())
+        globs = [g for w in words for k, gs in RISKY_GLOBS.items() if w.startswith(k) for g in gs]
+        globs = globs or [f"*{w}*" for w in words if len(w) > 3]
+        if any(fnmatch.fnmatch(low, g) for g in globs):
+            return label
+
+    return ""
+
+
 # --- board record helpers -------------------------------------------------------------------
 
 
-def add_blocker(rec: dict, kind: str, note: str = "") -> None:
+def add_blocker(rec: dict, kind: str, note: str = "", auto: bool = False) -> None:
     for b in rec["blockers"]:
         if b["type"] == kind:
             if note:
                 b["note"] = note
+            if b.get("auto"):
+                b["touched"] = now()
 
             return
     b = {"type": kind, "since": now()}
     if note:
         b["note"] = note
+    if auto:
+        b["auto"] = True
+        b["touched"] = b["since"]
     rec["blockers"].append(b)
 
 
@@ -326,6 +447,9 @@ def digest(cwd: str, me: str) -> str:
             f"BLOCKER {b['type']}" + (f' "{b["note"]}"' if b.get("note") else "")
             for b in r.get("blockers", [])
         )
+        crit = (r.get("critic") or {}).get("verdict")
+        if crit:
+            blockers = f"critic {crit}  {blockers}"
         lines.append(
             f"  {r['name']:<24} {ticket:<9} {r.get('phase', 'idle'):<13} "
             f"{r.get('branch', '?'):<28} {files_txt}  {blockers}  {r.get('status', '')}".rstrip()
@@ -383,6 +507,125 @@ def unpushed(cwd: str) -> list[str]:
     return log.splitlines() if log else []
 
 
+def head_sha(cwd: str) -> str:
+    return git(cwd, "rev-parse", "HEAD")
+
+
+def ledger_path(cwd: str) -> Path:
+    return board_dir(cwd) / "commits.ledger"
+
+
+def ledger(cwd: str) -> dict:
+    data = load(ledger_path(cwd))
+
+    return data if isinstance(data, dict) else {}
+
+
+def record_commits(rec: dict, before: str) -> None:
+    """Attribute the commits a git command created (before..HEAD) to this session."""
+    cwd = rec["cwd"]
+    head = head_sha(cwd)
+    if not head or head == before:
+        return
+    shas = git(cwd, "rev-list", "--max-count=50", f"{before}..{head}" if before else head)
+    new = shas.splitlines() if shas else []
+    if not new:
+        return
+    book = ledger(cwd)
+    owner = {
+        "session": rec["session_id"],
+        "name": rec.get("name", ""),
+        "ticket": (rec.get("ticket") or {}).get("key") or "",
+    }
+    for sha in new:
+        book[sha] = owner
+    while len(book) > MAX_COMMITS_LEDGER:
+        book.pop(next(iter(book)))
+    path = ledger_path(cwd)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(book))
+    tmp.replace(path)
+
+
+def base_refs(cwd: str) -> tuple[str, str]:
+    """The remote-tracking base and the local base, from `git.remote` / `git.baseBranch`."""
+    git_cfg = config(cwd).get("git")
+    git_cfg = git_cfg if isinstance(git_cfg, dict) else {}
+    base = str(git_cfg.get("baseBranch") or "main").strip() or "main"
+    remote = str(git_cfg.get("remote") or "origin").strip() or "origin"
+
+    return f"{remote}/{base}", base
+
+
+def push_range(cwd: str) -> str:
+    if git(cwd, "rev-parse", "--verify", "-q", "@{upstream}"):
+        return "@{upstream}..HEAD"
+    for base in base_refs(cwd):
+        if git(cwd, "rev-parse", "--verify", "-q", base):
+            return f"{base}..HEAD"
+
+    return ""
+
+
+def foreign_commits_reason(cwd: str, me: str) -> str:
+    rng = push_range(cwd)
+    if not rng:
+        return ""
+    book = ledger(cwd)
+    lines = []
+    for ln in git(cwd, "log", "--format=%H %h %s", rng).splitlines():
+        full, short, subject = ln.split(" ", 2)
+        owner = book.get(full)
+        if not owner or owner.get("session") == me:
+            continue
+        who = owner.get("name") or owner.get("session", "")[:8]
+        ticket = owner.get("ticket")
+        lines.append(f"{short} {subject[:50]} (made by {who}" + (f", {ticket}" if ticket else "") + ")")
+
+    return ("this push carries commits that belong to another session: " + "; ".join(lines)) if lines else ""
+
+
+def critic_reason(rec: dict) -> str:
+    cwd = rec["cwd"]
+    rng = push_range(cwd)
+    if not rng:
+        return ""
+    hits = sorted(
+        {
+            f"{f} ({label})"
+            for f in git(cwd, "diff", "--name-only", rng).splitlines()
+            if (label := risky_hit(f, cwd))
+        }
+    )
+    if not hits:
+        return ""
+    critic = rec.get("critic") or {}
+    last_edit = max(rec.get("files", {}).values(), default="")
+    if critic.get("verdict") == "PASS" and critic.get("at", "") >= last_edit:
+        return ""
+    state = (
+        f"critic {critic['verdict']} is stale (files edited since)"
+        if critic.get("verdict") == "PASS"
+        else f"critic verdict is {critic.get('verdict', 'missing')}"
+    )
+
+    return (
+        "risky change without a current critic PASS ("
+        + state
+        + "): "
+        + ", ".join(hits[:4])
+        + ". Run the critic, then `board.py set --critic PASS`"
+    )
+
+
+def stack_touch(rec: dict, note: str) -> None:
+    add_blocker(rec, STACK_BLOCKER, note, auto=True)
+    for b in rec["blockers"]:
+        if b["type"] == STACK_BLOCKER and b.get("auto"):
+            b["touched"] = now()
+
+
 # --- hook commands -----------------------------------------------------------------------
 
 
@@ -418,6 +661,52 @@ def cmd_touch(hook: dict) -> None:
         emit("PostToolUse", additionalContext=text)
 
 
+def cmd_pre_edit(hook: dict) -> None:
+    if hook.get("tool_name") not in EDIT_TOOLS:
+        return
+    tool_input = hook.get("tool_input") or {}
+    file_path = tool_input.get("file_path") or tool_input.get("notebook_path")
+    if not file_path:
+        return
+    path, rec = own_record(hook)
+    relp = rel(file_path, rec["cwd"])
+    fields: dict[str, str] = {}
+    warned = rec.setdefault("overlap_warned", [])
+    if relp not in warned:
+        owners = [
+            f"{r['name']} ({(r.get('ticket') or {}).get('key') or 'no ticket'})"
+            for r in neighbours(rec["cwd"], rec["session_id"])
+            if relp in r.get("files", {})
+        ]
+        if owners:
+            warned.append(relp)
+            fields["permissionDecision"] = "ask"
+            fields["permissionDecisionReason"] = (
+                f"{relp} is being edited by {', '.join(owners)}. "
+                "Message that session or ask the developer before editing it too."
+            )
+    shown = rec.setdefault("rules_shown", [])
+    if relp not in shown:
+        rules = matching_rules(relp, rec["cwd"])
+        if rules:
+            shown.append(relp)
+            fields["additionalContext"] = (
+                f"Area rules for {relp}: read {', '.join(rules)} before this edit, if you "
+                "have not already."
+            )
+    save(path, rec)
+    if fields:
+        emit("PreToolUse", **fields)
+
+
+def cmd_pre_mcp(hook: dict) -> None:
+    if "playwright" not in str(hook.get("tool_name", "")).lower():
+        return
+    path, rec = own_record(hook)
+    stack_touch(rec, "driving the app in the browser")
+    save(path, rec)
+
+
 def push_reason(cwd: str, me: str) -> str:
     reasons = []
     for r, b in holders(cwd, me, PUSH_BLOCKER):
@@ -447,19 +736,32 @@ def cmd_pre_bash(hook: dict) -> None:
     path, rec = own_record(hook)
     command = (hook.get("tool_input") or {}).get("command", "")
     rec["_snapshot"] = dirty_snapshot(rec["cwd"])
+    rec["_head"] = head_sha(rec["cwd"]) if COMMIT_RE.search(command) else ""
     reason = ""
+    if is_app_start(command, rec["cwd"]):
+        stack_touch(rec, "app started, verifying on the live stack")
     if PUSH_RE.search(command):
-        reason = push_reason(rec["cwd"], rec["session_id"])
+        reason = " | ".join(
+            r
+            for r in (
+                push_reason(rec["cwd"], rec["session_id"]),
+                foreign_commits_reason(rec["cwd"], rec["session_id"]),
+                critic_reason(rec),
+            )
+            if r
+        )
         add_blocker(rec, PUSH_BLOCKER, command.strip()[:80])
         rec["phase"] = "pushing"
     elif is_stack_command(command, rec["cwd"]):
         reason = stack_reason(rec["cwd"], rec["session_id"])
+        if not re.search(r"\b(?:stop|down|nuke)\b", command):
+            stack_touch(rec, "restarted the local stack")
     save(path, rec)
     if reason:
         emit(
             "PreToolUse",
             permissionDecision="ask",
-            permissionDecisionReason=f"Another agent session is in the way: {reason}. "
+            permissionDecisionReason=f"Before this push or restart: {reason}. "
             "Ask the developer, or message that session first.",
         )
 
@@ -469,6 +771,9 @@ def cmd_post_bash(hook: dict) -> None:
         return
     path, rec = own_record(hook)
     before = rec.pop("_snapshot", {}) or {}
+    head_before = rec.pop("_head", "")
+    if head_before:
+        record_commits(rec, head_before)
     for relp, mtime in dirty_snapshot(rec["cwd"]).items():
         if before.get(relp) != mtime:
             record_file(rec, os.path.join(toplevel(rec["cwd"]), relp))
@@ -497,6 +802,14 @@ def cmd_set(hook: dict, args: list[str]) -> None:
             rec["ticket"] = {"key": next(it), "source": "implement", "confirmed": True}
         elif a == "--phase":
             rec["phase"] = next(it)
+            if rec["phase"] != "verifying":
+                rec["blockers"] = [
+                    b for b in rec["blockers"] if not (b["type"] == STACK_BLOCKER and b.get("auto"))
+                ]
+        elif a == "--critic":
+            verdict = next(it).upper()
+            if verdict in ("PASS", "FAIL"):
+                rec["critic"] = {"verdict": verdict, "at": now(), "head": head_sha(rec["cwd"])}
         elif a == "--blocker":
             add_blocker(rec, next(it))
         elif a == "--note" and rec["blockers"]:
@@ -516,7 +829,8 @@ def cmd_overview(cwd: str, as_json: bool) -> None:
 
 def cmd_overlap(cwd: str, me: str) -> None:
     mine = set(load(own_path(cwd, me)).get("files", {}))
-    base = git(cwd, "merge-base", "HEAD", "origin/main") or git(cwd, "merge-base", "HEAD", "main")
+    remote_base, local_base = base_refs(cwd)
+    base = git(cwd, "merge-base", "HEAD", remote_base) or git(cwd, "merge-base", "HEAD", local_base)
     if base:
         mine |= set(git(cwd, "diff", "--name-only", base, "HEAD").splitlines())
     mine |= set(dirty_snapshot(cwd))
@@ -571,6 +885,8 @@ def main(argv: list[str]) -> int:
     handlers = {
         "register": lambda: cmd_register(hook),
         "prompt": lambda: cmd_prompt(hook),
+        "pre-edit": lambda: cmd_pre_edit(hook),
+        "pre-mcp": lambda: cmd_pre_mcp(hook),
         "touch": lambda: cmd_touch(hook),
         "pre-bash": lambda: cmd_pre_bash(hook),
         "post-bash": lambda: cmd_post_bash(hook),
