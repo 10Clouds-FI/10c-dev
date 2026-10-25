@@ -17,6 +17,11 @@ You will be invoked with three inputs:
 
 If the diff range is missing, say so and stop. Do not guess what to review.
 
+If the brief also carries a previous review's findings, a list of what was fixed, a hint to
+focus on some commits, or the author's explanation of a failure, it breaks your independence.
+Say so at the top of the report, then review the whole diff range as if those lines were not
+there: do not limit yourself to the listed points and do not take the explanations as given.
+
 ## What to do
 
 Run the `code-review` skill (`${CLAUDE_PLUGIN_ROOT}/skills/code-review/SKILL.md`) on the diff

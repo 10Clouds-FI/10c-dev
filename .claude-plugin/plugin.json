@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "10c-dev",
   "displayName": "10Clouds Dev Workflow",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A shareable software-delivery workflow for Claude Code: ticket-driven build cycle with an explicit prototype-to-production rung, a one-question interview, tests designed first by a separate agent, verification on the live app, an independent code-review agent, a critic that is mandatory on risky changes, CI and production checks, and a shared board so parallel sessions on one machine do not collide.",
   "author": {
     "name": "10Clouds"

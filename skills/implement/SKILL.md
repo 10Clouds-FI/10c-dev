@@ -270,6 +270,10 @@ minor, nit, plus the lint, type, test and breaking-change checks.
   you fixed. If they want to read the report first or take the findings themselves, they can
   say so; fixing waits for them then. Re-run the checks after the fixes. All blockers and
   majors are fixed before commit.
+- **A second review is as blind as the first:** a fresh `code-review-agent`, the same brief
+  (the whole diff including the fixes, ticket, spec), never the previous findings, what you
+  fixed, which commits to focus on, or your explanation of a failure. The reproducing tests
+  for the old findings show whether they are fixed. See `coding` §7.
 - **Minors and nits:** a finding in a file the diff already touches is fixed now. Every other
   one is recorded for later as a comment on the ticket (a real key), or listed in the final
   summary for a `LOCAL-` task. Do not widen the scope to fix files the change does not touch.

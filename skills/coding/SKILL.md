@@ -265,6 +265,16 @@ and a mechanical verdict.
   and state which commands you ran. Only write the config when the human asks.
 - The review covers **this** diff. A finding about pre-existing code goes into
   phase 8's list, not into a drive-by fix.
+- **A second review after the fixes is a new, equally blind one.** Spawn a fresh
+  `code-review-agent` with the same brief as the first: the whole diff (merge-base to
+  the current head, fixes included), the ticket key, the spec, the gate. Never the
+  previous findings, a "this commit claims to fix X" list, a "focus on the fix commits"
+  hint, or your explanation of why a test fails. A reviewer told where to look checks
+  your list and stops looking. Whether the old findings are fixed is shown by the
+  reproducing tests written for them (§4), not by the reviewer.
+- **The brief carries no conclusions of yours**, in the first review either: no "known
+  failure, it is only X", no "this part is fine". If something is known to fail, say
+  that it fails, not why.
 
 ---
 
