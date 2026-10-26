@@ -18,6 +18,8 @@ Hook commands (stdin = the hook's JSON), wired in hooks/hooks.json:
                                   when a neighbour is in the way, before a push that carries
                                   another session's commits, and before a push that touches a
                                   risky area without a critic PASS
+
+In bypassPermissions mode every "ask" becomes a warning in additionalContext instead.
     post-bash   PostToolUse Bash  attribute files the command changed; record the SHAs a
                                   git commit created; digest as additionalContext
     end         SessionEnd        remove the record
@@ -483,7 +485,18 @@ def digest_if_changed(path: Path, rec: dict) -> str:
     return text if text and changed else ""
 
 
+# Set from the hook's permission_mode. A developer who chose bypassPermissions opted out of
+# prompts, so an "ask" becomes a warning in the agent's context instead of a dialog.
+BYPASS = False
+
+
 def emit(event: str, **fields: str) -> None:
+    if BYPASS and fields.get("permissionDecision") == "ask":
+        del fields["permissionDecision"]
+        reason = fields.pop("permissionDecisionReason", "")
+        fields["additionalContext"] = " ".join(
+            t for t in (reason, fields.get("additionalContext", "")) if t
+        )
     print(json.dumps({"hookSpecificOutput": {"hookEventName": event, **fields}}))
 
 
@@ -882,6 +895,8 @@ def main(argv: list[str]) -> int:
         hook.setdefault("cwd", cwd)
     if not hook.get("session_id"):
         return 0
+    global BYPASS
+    BYPASS = hook.get("permission_mode") == "bypassPermissions"
     handlers = {
         "register": lambda: cmd_register(hook),
         "prompt": lambda: cmd_prompt(hook),

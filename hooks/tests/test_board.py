@@ -307,6 +307,38 @@ class BoardTest(unittest.TestCase):
     def decision(self, out: str) -> dict:
         return json.loads(out)["hookSpecificOutput"] if out else {}
 
+    def test_bypass_mode_warns_instead_of_asking(self) -> None:
+        self.run_cmd("register", self.hook(self.peer))
+        self.run_cmd(
+            "touch",
+            self.hook(self.peer, tool_name="Edit", tool_input={"file_path": f"{self.repo}/s.ts"}),
+        )
+        bypass = {"permission_mode": "bypassPermissions"}
+        _, out, _ = self.run_cmd(
+            "pre-bash",
+            self.hook(self.me, tool_name="Bash", tool_input={"command": "git push"}, **bypass),
+        )
+        d = self.decision(out)
+        self.assertNotIn("permissionDecision", d)
+        self.assertIn("session-peer", d["additionalContext"])
+        _, out, _ = self.run_cmd(
+            "pre-edit",
+            self.hook(self.me, tool_name="Edit", tool_input={"file_path": f"{self.repo}/s.ts"}, **bypass),
+        )
+        d = self.decision(out)
+        self.assertNotIn("permissionDecision", d)
+        self.assertIn("session-peer", d["additionalContext"])
+        _, out, _ = self.run_cmd(
+            "pre-bash",
+            self.hook(
+                self.me,
+                tool_name="Bash",
+                tool_input={"command": "git push"},
+                permission_mode="acceptEdits",
+            ),
+        )
+        self.assertEqual(self.decision(out)["permissionDecision"], "ask")
+
     def test_editing_a_neighbours_file_asks_once(self) -> None:
         self.run_cmd("set", self.hook(self.peer), "--ticket", "ABC-7")
         self.run_cmd(
