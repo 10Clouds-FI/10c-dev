@@ -127,6 +127,9 @@ developer answers. It asks on:
 - a push that carries commits another session made;
 - a push of a risky change without a critic `PASS` recorded after the last edit.
 
+In `bypassPermissions` mode the developer has opted out of prompts, so each of these becomes a
+warning in the agent's context instead of a dialog.
+
 Requires `python3` (3.10 or newer). No third-party dependencies.
 
 ## Tests
