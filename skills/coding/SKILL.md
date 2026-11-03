@@ -17,8 +17,8 @@ without anyone reviewing it, and leaving behind a pile of code nobody dares
 delete. This skill exists to stop all five.
 
 **Run the phases in order:** rung, interview, spec, tests first, code, proof,
-review. Ceremony scales with the rung (§1); the phases themselves do not
-disappear.
+review. Ceremony scales with the rung and with the size of the diff (§1):
+a value change or a small diff gets no separate test or review agent.
 
 ---
 
@@ -53,6 +53,45 @@ Rules:
 
 Explicit spec + explicit "just build it" → go straight to the rung the spec
 describes and stop asking for permission at every step.
+
+### Size the checks to the change
+
+The rung says how far the work goes; the **size** of the change says how much
+checking it needs. Name the size together with the rung ("R2, a value
+change"), and again before the tests (§4) and the review (§7), measured on the
+real diff (`git diff --stat`, comment-only lines not counted). Three sizes:
+
+| Size | What the diff is | Tests (§4) | Review (§7) | Cleanup (§8) |
+|---|---|---|---|---|
+| **Value change** | Only literal values change in existing code or config — a number, a timeout, a threshold, a limit, a size, a flag's value — plus comments. No line of code added or removed; no name, condition, operator, signature or string key changes. | No test-design agent. Run the existing tests and checks that cover the touched files. A test that pins the old value gets that one value changed. | None. | None. |
+| **Small** | All of: at most ~30 changed lines of code (added + removed, comments excluded), no new or deleted file, no changed public interface or format (exported API, route, event, CLI flag, schema, config or file format another program reads), no risky area (auth, permissions, data scoping, money, migrations, concurrency, the repo's own `risky` list). | No test-design agent. You write the test that pins the changed behaviour yourself (for a bug, the reproducing test first). Run only the tests covering the touched paths. | No separate agent: a self-review in your own context against the short list below. | One line: did this make anything pointless? |
+| **Large** | Anything else: more lines, new files or modules, new logic beyond a local edit, a changed interface or format, a risky area, a port or migration of a whole component. | Test-design agent at R2+ (§4). | Independent `code-review-agent` (§7), its gate scoped to the touched paths. | The `cleanup` skill. |
+
+Why ~30 lines: that is one screen. A diff that size fits whole in your own
+context, so a fresh reviewer adds little beyond the checklist below, while
+spawning one costs minutes and the whole suite costs more; past one screen,
+your blind spots start to matter more than the minutes. A value change is
+checked by running it, not by reading it: the only question is whether the new
+value does what was asked, and only the running artifact answers that (§6).
+
+**Self-review list (Small):** re-read the whole diff once, then check each:
+1. it does what the spec's "done when" asks, and nothing on the out-of-scope list;
+2. every caller of a changed function or value still gets what it expects;
+3. no new failure path is left unhandled where the surrounding code handles it;
+4. no secret, debug output or leftover experiment in the diff;
+5. the tests covering the touched paths ran and passed (name the command).
+Post the five lines with ✓/✗ in chat. Any ✗ is fixed before §6.
+
+Rules:
+
+- **The size is a fact about the diff, not a feeling.** Count it. A change
+  that grows past its size mid-task moves up, and you say so; it never moves
+  down because the deadline is close.
+- **Do not rework tests or check scripts inside a value change or a small
+  change.** If a check expects the old value, change that value. If the check
+  itself is wrong, say so and leave it for a task of its own.
+- §6 (prove it on the artifact) applies to every size. Ceremony shrinks;
+  looking at the real result never does.
 
 ---
 
@@ -143,9 +182,12 @@ Two failure modes this closes, both of which look like success while you work:
 
 ---
 
-## 4. Tests first (R2+)
+## 4. Tests first (R2+, Large changes)
 
-**Mandatory at R2 and R3, optional at R1, never at R0.** The tests are written
+**Mandatory for a Large change at R2 and R3, optional at R1, never at R0.** A
+value change or a Small change (§1) gets no test-design agent: run the existing
+tests covering the touched paths, and for a Small change that alters behaviour
+write the one test that pins it yourself. For a Large change the tests are written
 from the spec, by an agent that does not write the code, **before the code
 exists**. Spawn the `test-design-agent` (`agents/test-design-agent.md`) with the
 ticket (or topic), the rung, the repo path, the "done when" conditions and the out-of-scope list. Give it
@@ -243,9 +285,11 @@ the wrong role. Reads worked, so the account looked healthy, while the sync
 reported success 118 times and wrote nothing for 29 hours. Found by the client,
 not by us. Both fixes took five minutes each; only the looking was missing.
 
-## 7. Review the diff before you call it done (R2+)
+## 7. Review the diff before you call it done (R2+, Large changes)
 
-**Mandatory at R2+, on request at R1, never at R0.** The review is **independent**:
+**Mandatory for a Large change at R2+, on request at R1, never at R0.** A value
+change gets no review; a Small change gets the self-review list from §1 in your
+own context, not an agent. For a Large change the review is **independent**:
 spawn the `code-review-agent` in a fresh context and give it only the diff range (the
 current branch against its merge-base, uncommitted changes included), the ticket key and
 the spec. Never the build conversation: a reviewer that shares your context shares your
@@ -257,8 +301,11 @@ and a mechanical verdict.
   fixed. Minors and nits follow the disposition the review gives them (fix now if the
   file is already in the diff, otherwise a comment on the ticket); do not silently expand
   scope.
-- The validation gate comes from `verify.commands` (plus `verify.byArea` for the
-  touched paths) in the repo's `.claude/task-flow.json`. If the repo has no such
+- The validation gate is scoped to the diff: the fast whole-repo checks from
+  `verify.commands` (lint, typecheck, build) plus the tests of the touched paths
+  (`verify.byArea`, or the test runner's path filter), not the whole suite. The
+  whole suite is for a change to a shared module many paths depend on, and for
+  CI. The gate comes from the repo's `.claude/task-flow.json`. If the repo has no such
   file, **do not scaffold config into someone's repo** — that is exactly the
   "plan file in their repo" this skill forbids. Derive the gate from what the
   repo already has (`package.json` scripts, `Makefile`, CI config, `CLAUDE.md`)
@@ -280,8 +327,9 @@ and a mechanical verdict.
 
 ## 8. Closing reflection — what did this make pointless?
 
-**Mandatory before you call the task done at R1+.** Load the `cleanup` skill
-and run it. In short: your change often obsoletes older code — a superseded
+**Mandatory before you call a Large change done at R1+.** Load the `cleanup`
+skill and run it. A Small change gets one line instead (did it make anything
+pointless?); a value change gets nothing. In short: your change often obsoletes older code — a superseded
 implementation, a now-unreachable branch, a feature whose reason to exist just
 disappeared. Obvious ones you remove yourself; the rest you list and propose.
 Leaving them is how a codebase turns into a swamp nobody can reason about.
@@ -339,5 +387,7 @@ conversation and are read by people who were not in it.
 | "The job says ok, so it works" | It says it ran. Read the data it was supposed to write. |
 | "I fixed the error it showed me" | You fixed the one that surfaced. List the rest from the code. |
 | "Nobody has complained, so it's fine" | Nobody has used it. That is not the same sentence. |
-| "I read my diff, it's fine" | Reading is not reviewing. Phase 7 runs the gate and ranks findings; do it. |
+| "I read my diff, it's fine" | For a Large change, reading is not reviewing: phase 7 runs the gate and ranks findings. For a Small one, run the §1 list and the touched tests. |
+| "It's one value, but let me get it reviewed to be safe" | A value change is checked by running it. A reviewer reading `timeout = 30` → `timeout = 60` learns nothing that running it doesn't. |
+| "The check fails on the new value, I'll rework the check" | Change the one value it expects. Reworking checks is a task of its own. |
 | "I'll write a plan file in their repo" | Their repo is not your notebook. Chat, or the project model directory. |

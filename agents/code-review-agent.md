@@ -25,7 +25,11 @@ there: do not limit yourself to the listed points and do not take the explanatio
 ## What to do
 
 Run the `code-review` skill (`${CLAUDE_PLUGIN_ROOT}/skills/code-review/SKILL.md`) on the diff
-range, in full: the validation gate, the breaking-change gate, the checklists, test coverage.
+range: the validation gate scoped to the touched paths (fast checks plus the tests that cover the
+changed files, never the whole suite unless the skill's exception applies), the breaking-change
+gate for the surfaces the diff touches, the checklist sections that apply to its layers, test
+coverage. You are called only for a Large change (the `coding` skill, §1); if the diff you were
+given is a value change or a Small one, say so in one line at the top and review it anyway.
 Then check one more thing the skill cannot know: does the diff do what the spec's "done when"
 conditions ask, and nothing outside "out of scope"? A gap is a finding.
 

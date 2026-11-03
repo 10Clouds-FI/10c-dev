@@ -52,7 +52,7 @@ Callers (the `code-review-agent`, or any automation wrapping this skill) read th
 
 1. **Scope**: Identify changed files. Classify each by layer (HTTP handler or route, data model or schema, migration, validation, UI component or page, background job or consumer, CLI, config, build/codegen, test).
 2. **Gather context**: Read the repository's agent instructions and contributing docs for each touched area. Read design docs or architecture notes when the repo keeps them, plus any known-pitfalls notes the team maintains.
-3. **Validation gate (MANDATORY)**: Run every command in the config's `validation.commands`, in order. Every gate MUST pass before the review can conclude. If any gate fails, that is a finding — do NOT mark the review as passing. See **Validation Gate** below.
+3. **Validation gate (MANDATORY, scoped to the diff)**: Run the fast whole-repo checks from the config (lint, typecheck, build) and the tests of the touched paths (`verify.byArea` for every touched area, or the test runner's path filter on the tests that cover the changed files). Not the whole suite: that is CI's job, and the full run is what turns a ten-minute review into a forty-minute one. Every gate command you run MUST pass before the review can conclude. If any fails, that is a finding — do NOT mark the review as passing. See **Validation Gate** below.
 4. **Breaking-change gate**: Check every changed file against the breaking-change checklist: exported APIs, HTTP routes and response shapes, event names, CLI flags, DB schema, config formats. Flag violations as **blocker**. If the project documents its own compatibility policy, apply it on top. See **Breaking Changes** in the Quick Rule Reference.
 5. **Run the checklists**: Apply all applicable sections of `references/review-checklist.md`. Read the repo-local rule files that cover the touched paths (`rules` in `.claude/task-flow.json`, else the matching `.claude/rules/*.md`) and apply them IN ADDITION to the built-in checklist; do the same with `CODE_REVIEW.md` from the repo root when it exists — repo-local rules extend the built-in ones, never replace them. When `BACKWARD_COMPATIBILITY.md` exists at the repo root, check every touched surface against it: a change that breaks a protected surface without following the documented deprecation/migration path is a Critical finding, and the report must explicitly WARN the user about it. Flag violations with severity, file, line, and fix suggestion.
 6. **Test coverage**: Verify changed behavior is covered by unit tests and/or integration tests. If coverage is missing, flag it with severity, file references, and the exact test cases to add.
@@ -61,11 +61,12 @@ Callers (the `code-review-agent`, or any automation wrapping this skill) read th
 
 ## Validation Gate (MANDATORY)
 
-**NEVER claim code is "ready to ship", "ready to merge", or "CI will pass" without running the configured validation commands first and confirming they all pass.** The gate is the config's `validation.commands` list, run in order — it exists precisely so the review mirrors what the repository's CI runs.
+**NEVER claim code is "ready to ship", "ready to merge", or "CI will pass" without running the gate first and confirming it passes.** The gate is the config's fast checks plus the tests of the touched paths. It says what this diff did to the code it touches; the whole suite stays with CI, and the report says which tests were run and which were left to CI.
 
 ### Rules
 
 - Run commands in the configured order. Commands that are independent of each other's outputs (typically typecheck and unit tests) may run in parallel to save time.
+- **Scope the tests to the diff.** Touched paths = the changed files, plus the tests that import or exercise them. Run the whole suite only when the diff changes a shared module most of the repo depends on (a base class, a shared config loader, the build setup), or when the repo offers no way to run a subset; say which of the two it was.
 - If a configured command regenerates files (codegen, formatting, lockfile maintenance), include the regenerated files in the review scope and rerun the downstream gates.
 - **Every failure is a finding**: if a gate command fails, it is a **blocker** finding — even if the failure appears unrelated to the current changes. If it fails on this branch, it will fail in CI regardless of whose fault it is.
 - **No excuses**: "pre-existing on the base branch", "flaky test", "not our code" are not valid reasons to skip. Fix it or flag it as a blocker.
@@ -171,7 +172,7 @@ When reviewing, pay special attention to:
 ## Rules
 
 - Shared rules: `references/rules.md` — label discipline, claim etiquette, secrets hygiene, marker contract, emoji glossary. They always apply.
-- Never conclude a review without running the full validation gate and reporting per-command results.
+- Never conclude a review without running the gate (fast checks + the touched paths' tests) and reporting per-command results.
 - A failing gate command is always a blocker finding, regardless of whose change broke it.
 - Apply the built-in checklist on every review; apply the repo-local rule files and the repo-root `CODE_REVIEW.md` in addition whenever they exist.
 - When `BACKWARD_COMPATIBILITY.md` exists, verify every touched contract surface against it and flag violations as Critical with an explicit warning to the user.
