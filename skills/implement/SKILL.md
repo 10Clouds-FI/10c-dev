@@ -207,7 +207,7 @@ migrations, pipelines, chat gateway; a `paths` list, if the config gives one, de
 **core** when the project model marks the touched capability `core`. The critic is mandatory
 for both (Step 6).
 
-**Tests first.** At R2 and R3, spawn the `test-design-agent` before writing any code. Pass it
+**Tests first.** At R2 and R3, for a Large change (`coding` §1: not a value change, not a Small diff), spawn the `test-design-agent` before writing any code. Pass it
 the ticket key, the rung, the repo path, the spec's "done when" conditions and the out-of-scope
 list, never the plan or this conversation. It writes failing unit and e2e tests (a bug gets a reproducing test) and
 returns the cases and the files. You may not weaken, delete or edit those tests without telling
@@ -259,9 +259,11 @@ the developer who holds it and why, and wait or message that session.
 - Finish with the per-condition table from `coding` §6: each "done when" condition, how it was
   observed, and ✓, ✗ or "unverified (why)". A ✗ goes back to "write the code" (Step 2).
 
-### 3b. Code review by an independent agent (R2 and above)
+### 3b. Code review by an independent agent (R2 and above, Large changes)
 
-Spawn `code-review-agent` in a fresh context. Pass it the diff range (the current branch
+Size the diff first (`coding` §1). A value change gets no review; a Small change gets the
+self-review list from `coding` §1 in this context and the touched paths' tests. For a Large
+change, spawn `code-review-agent` in a fresh context. Pass it the diff range (the current branch
 against the base branch, uncommitted changes included), the ticket key and the spec, never this
 conversation. It runs the `code-review` skill and returns findings ranked blocker, major,
 minor, nit, plus the lint, type, test and breaking-change checks.
@@ -298,6 +300,8 @@ Keep the brief in the conversation. It does not need to be written to disk unles
 to the repo's gotchas doc so the next developer does not rediscover it. Offer, never auto-write.
 
 ### 5. Close: cleanup and the project model
+
+(A Small change: one line on what it made pointless instead of the `cleanup` skill; a value change: skip it.)
 
 Runs after Step 4, at R1 and above, **before the critic on every change**, so the critic's PASS covers the final diff. Runs before anything is committed.
 
