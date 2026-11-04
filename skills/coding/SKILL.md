@@ -163,6 +163,11 @@ honest.
   getter return the field" no.
 - Tests are the executable half of the project model (see below): if the model
   says the module exists to solve problem X, there should be a test asserting X.
+- **Keep the suite fast.** It runs after every edit, so its wall time multiplies
+  across the whole task. Expensive setup runs once per session and is copied into
+  each test; tests run in parallel on all cores (`pytest -n auto`, Playwright
+  workers, the runner's equivalent). If a full run takes minutes, fix the suite
+  (shared fixtures, parallelism, smaller inputs) before writing more code.
 - **You may not weaken, delete or edit those tests to make them pass.** If one
   is wrong, say so to the developer and change it only with their agreement.
   If the internals change but the problem solved does not, the tests should not
