@@ -364,7 +364,7 @@ conversation and are read by people who were not in it.
 - **Commit messages:** imperative mood, say what changed and why, no emoji.
 - One coherent change per commit; don't bundle unrelated cleanup with a feature.
 - Commit when asked to. If the repo's own conventions (CLAUDE.md, contributing
-  docs) say otherwise, they win.
+  docs, `git.confirmPush: false` in `.claude/task-flow.json`) say otherwise, they win.
 
 ---
 

@@ -27,7 +27,13 @@
     "baseBranch": "main",
     "remote": "origin",
     "mode": "main",
-    "branchPrefix": "feature/"
+    "branchPrefix": "feature/",
+    "confirmPush": true
+  },
+  "deploy": {
+    "command": "<your deploy command>",
+    "target": "production",
+    "auto": false
   },
   "verify": {
     "commands": ["make lint"],

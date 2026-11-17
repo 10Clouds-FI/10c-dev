@@ -42,7 +42,8 @@ on a green compile. A **Code review** agent that never saw the build reads the d
 cleanup pass follows. For risky changes, and for changes near a core capability, a **Critic**
 starting from an empty context then drives the live app and returns PASS or FAIL; a FAIL goes
 back to the build. It commits only on your yes, under your name, to `main` or, when a change needs a
-second pair of eyes, as a pull request.
+second pair of eyes, as a pull request. A repo can opt in to committing, pushing and deploying
+reviewed changes without the question (`git.confirmPush`, `deploy` in `.claude/task-flow.json`).
 
 The ticket status is derived from where the code is, never from how the conversation went:
 **In Progress** while it is local, **In Review** once it is on staging after a green CI,
@@ -63,8 +64,9 @@ The ticket status is derived from where the code is, never from how the conversa
   continuously, "checked on production" is simply the step after your deploy.
 - **What does it do without asking?** It edits your working tree, runs your app locally, and
   moves the ticket to In Progress when you name a key and to In Review once the change is on
-  staging. It never commits, pushes, posts to Slack, or marks a ticket Done without your yes in
-  the conversation.
+  staging. It never commits, pushes, deploys, posts to Slack, or marks a ticket Done without your
+  yes in the conversation, unless your repo's config opts in to committing, pushing and deploying
+  without the question; that is off by default.
 - **Does it work in a branch?** It works in your checkout. By default it commits to the base
   branch, which is how teams that deploy `main` to staging run it; for any single change you can
   ask for a pull request instead, and `"git": {"mode": "pr"}` makes that the default. Either way
@@ -73,7 +75,8 @@ The ticket status is derived from where the code is, never from how the conversa
   guards in the shared board hooks: you are asked before an edit to a file a neighbour is
   editing, before a stack restart a neighbour is testing against, and before a push that would
   carry another session's commits. Risky changes are also checked at push time for a recorded
-  critic PASS. Nothing is committed or pushed without your explicit yes in the conversation.
+  critic PASS. Nothing is committed or pushed without your explicit yes in the conversation,
+  unless the repo opted in with `git.confirmPush: false`.
 - **Why does the critic not read the code?** So it tests what was asked for rather than what was
   built. It gets the ticket, the "done when" conditions and the running app, drives it like a
   user, and reports PASS or FAIL. It is mandatory for risky changes (tenant isolation,
@@ -186,6 +189,9 @@ interview; [`templates/task-flow.schema.md`](templates/task-flow.schema.md) docu
 `ci` tells the plugin how to read the unit and e2e runs, the staging and production URLs, and
 `verify.e2e` is the local end-to-end command. `hotspots` names the paths where two sessions
 colliding is expensive, and `reporting` sets the language and tone of ticket comments.
+`git.confirmPush: false` and `deploy` (`command`, `target`, `auto`) let a repo commit, push and
+deploy reviewed changes without the question (the optional critic is then skipped unless asked
+for); both are off by default.
 `tracker: "none"` is valid for local R0/R1 work on synthetic `LOCAL-<date>-<time>` keys, which
 cannot be pushed to `main`.
 
