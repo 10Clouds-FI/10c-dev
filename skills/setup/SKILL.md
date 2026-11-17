@@ -146,7 +146,21 @@ The order that works:
    branch) or `pr` (a pull request by default). Either can be chosen per change later. For `pr`,
    the branch prefix. Check the commit identity: `git config user.name` and `user.email` must be
    the developer's own; show them and confirm. Commits are never made under another identity or
-   a bot.
+   a bot. Then ask how they want a finished change to leave the session, one question each:
+   - **Ask before each commit and push, or commit and push by itself** once the tests, the
+     review and the other gates have passed? Asking is the default (`git.confirmPush: true`);
+     only an explicit "by itself" writes `false`. Say that the optional critic is then
+     skipped unless asked for.
+   - **How is a pushed change shipped?** A command or the repo's deploy procedure goes into
+     `deploy.command`, and where it ships to `deploy.target`
+     (`staging` or `production`). Check that the command resolves without running it
+     (`make -n <target>`, `test -x <script>`; for a `see ...` pointer, open that section); "CI does it" or "not by the agent" removes the template's `deploy` block.
+   - If there is a command: **run it after the push without asking, or only on a yes?** A yes
+     each time is the default (`deploy.auto: false`); only an explicit "without asking" writes
+     `true`.
+
+   These answers only skip the plugin's own questions. Claude Code's permission prompts still
+   apply to `git push` and the deploy command unless the developer allows them in their settings.
 3. **Verify commands** — what proves a change is good. The global `verify.commands` list, plus
    `verify.byArea` for path prefixes with their own suite (a frontend directory's tests, a
    backend's pytest). Run each one you propose at least once so you know it exists and passes.

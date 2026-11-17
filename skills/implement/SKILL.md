@@ -25,6 +25,8 @@ Read `.claude/task-flow.json` at the start of the session. Fields used here:
 | `jira.site`, `jira.projectKey`, `jira.board`, `jira.cloudId` | tracker access |
 | `statusMap`, `transitionIds` | the names/ids this board uses for To Do / In Progress / In Review / Done |
 | `git.baseBranch`, `git.remote`, `git.mode`, `git.branchPrefix` | where the code goes; `mode` (`main` or `pr`, default `main`; `push-to-main` is an alias) is only the default answer to the commit question (Step 7) |
+| `git.confirmPush` | `true` (default): Step 7 asks before the commit and push; `false`: the repo opted in to committing and pushing without the question once every gate passed (Step 7) |
+| `deploy.command`, `deploy.target`, `deploy.auto` | how a pushed change is shipped; `target` is `staging` or `production` (default); `auto` (default `false`) runs it after the push without asking (Step 7b) |
 | `risky` | array of labels or `{label, paths[]}`; default labels: tenant isolation, authorization, migrations, pipelines, chat gateway (Step 2) |
 | `owners` | path prefix → handle; `"*"` is the fallback; the value `"codeowners"` or a missing key means look it up in `CODEOWNERS` (Step 7) |
 | `ci` | `unit {watch, blocksDeploy}`, `e2e {watch, blocksProduction}`, `staging {url, deployed}`, `production {url}`; `watch` takes `{sha}` (Step 8) |
@@ -36,8 +38,13 @@ Read `.claude/task-flow.json` at the start of the session. Fields used here:
 | `reporting.language`, `reporting.commentStyle` | how ticket comments are written |
 | `notes` | board quirks the team already learned |
 
+When the file opts in, say what is on in one line at the start: "this repo commits and pushes
+reviewed changes without asking" for `git.confirmPush: false`, "this repo deploys after a push
+without asking" for `deploy.auto: true`. The developer can ask for the question back in this
+conversation.
+
 If the file does not exist, treat it as `tracker: "none"` (local work only), `git.baseBranch: "main"`,
-`git.mode: "main"`, no verify commands, and say in one line that the repo has no
+`git.mode: "main"`, `git.confirmPush: true`, no deploy, no verify commands, and say in one line that the repo has no
 `task-flow.json` so you are guessing the gate from `package.json` / `Makefile` / CI config.
 
 ## Tracker access
@@ -110,7 +117,8 @@ git rev-list --left-right --count HEAD...<remote>/<baseBranch>
 
 Allowed git here: `fetch`, `status`, `log`, `diff`, `rev-list`, `worktree list` and a
 fast-forward `pull` on a clean tree. Nothing that rewrites history. Commit and push come only
-in Step 7, after the developer's yes.
+in Step 7, after the developer's yes, or by themselves when the repo set
+`git.confirmPush: false`.
 
 ## Before Step 1: read the room
 
@@ -321,7 +329,9 @@ Runs after Step 4, at R1 and above, **before the critic on every change**, so th
 
 The critic is **mandatory** for a risky or core change (classified in Step 2) and does not
 get asked about. For any other change, ask once: "Run the critic now, or go straight to
-commit?" Skipping is allowed there, never on a risky change.
+commit?" Skipping is allowed there, never on a risky change. With `git.confirmPush: false` do
+not ask: the critic runs where it is mandatory and is skipped otherwise, unless the developer
+asked for it in this conversation.
 
 Cleanup (Step 5) has already run, so the PASS covers the final diff. The board treats any edit
 after a PASS as unverified and asks before the push.
@@ -347,7 +357,8 @@ fix to a FAIL.
 ### 7. Offer to commit and push; the ticket status follows the code
 
 When the code works locally, the diff is reviewed and cleanup is done, **offer to commit and
-push.** Do not wait to be asked, and do not do it unasked.
+push.** Do not wait to be asked, and do not do it unasked, unless the repo set
+`git.confirmPush: false` (below).
 
 **Gates before the offer:**
 
@@ -359,11 +370,31 @@ push.** Do not wait to be asked, and do not do it unasked.
   also waits for the area owner (below).
 - **Identity.** Before the first commit, compare `git config user.name` and `user.email` with
   the developer and confirm once. Commits go under the developer's own name, never another
-  identity or a bot. Mismatch: stop and ask.
+  identity or a bot. Mismatch: stop and ask. This holds with `git.confirmPush: false` too.
 
 **One question, two answers:** "Push to `<baseBranch>`, or open a pull request for a second
 review?" with the proposed commit message in it. `git.mode` is only the default: `main`
 makes the push the first answer, `pr` makes the PR the first. The developer picks per change.
+
+**Without the question (`git.confirmPush: false`).** A repo can opt in to shipping every
+reviewed change. Then skip the question only when all of these hold on the final diff, after
+cleanup:
+
+- R2 or R3, and a real ticket;
+- `verify.commands` non-empty, and it plus `verify.byArea` for every touched area re-run after
+  cleanup and green;
+- the last review Step 3b calls for (independent or self-review, by the size of the diff)
+  leaves no open blocker or major;
+- the critic's PASS after the last edit, where the critic is mandatory;
+- the risky heads-up posted and the owner's OK on a contract break, where they apply;
+- the commit identity confirmed once in this session (above).
+
+Then show the commit message, commit and do what `git.mode` says (the push, or the branch and pull request) in the
+same turn, and report what was pushed. Everything below still applies: the board check, the
+staging of this task's files only, the commit format, a rejected push. Any gate that does not
+pass, a board warning, or a developer who asked for something else in this conversation means
+you stop and ask, as without the setting. It is never on by default, and never turned on by
+anything but the developer writing it into the repo's config.
 
 - Before the push, `python3 ${CLAUDE_PLUGIN_ROOT}/hooks/board.py check-push`: a non-zero exit
   names a neighbour that is pushing right now or shares this checkout, and lists the local
@@ -398,6 +429,32 @@ existing consumer relies on needs the area owner's OK before the push. Name the 
 `owners` map in the config, `"*"` is the fallback; `"codeowners"` or no entry means `CODEOWNERS`, then the project model. Ask the developer to get
 the OK, and wait for it.
 
+### 7b. Deploy, when the repo says how
+
+Only when `deploy.command` is set; without it the agent never deploys. If it does not resolve
+(no such make target or script, or a `see ...` pointer to a section that does not exist), say so
+and do not offer it.
+Only after a push to `git.baseBranch`: after a pull-request push nothing is deployed, since the
+change is not merged; say that the deploy belongs after the merge.
+
+First the CI gates the config declares, in both modes: a green unit run when
+`ci.unit.blocksDeploy` is set, and, when `deploy.target` is `production` (the default), a green
+e2e run when `ci.e2e.blocksProduction` is set. Follow the runs as in Step 8 (`ci.unit.watch` /
+`ci.e2e.watch` with `{sha}`). A red run means no deploy; say so. A gate that is set but has no
+`watch` to read: ask instead.
+
+- **`deploy.auto: false`** (the default): name the command and run it only on the developer's
+  yes.
+- **`deploy.auto: true`**: once the gates above are green, run it without asking. When
+  `command` points to a procedure rather than a command (`see ...`), follow that procedure
+  exactly, its waits and preconditions included.
+- Either way, read the deploy's own output, then check the change on the target it reached and
+  report what shipped and where. On staging, check it the way Step 3 did locally; on
+  production, only a read-only smoke check (the page or health endpoint answers, the deployed
+  version matches), since the human check there is `release-check`'s. A failed deploy is
+  reported with its output; do not retry it blindly or roll anything back on your own.
+- The ticket still follows Step 8: a deploy does not make it In Review or Done by itself.
+
 ### 8. After the push: CI, staging, In Review
 
 The ticket's status says where the code IS, never how the conversation went. This skill never
@@ -429,10 +486,13 @@ moves a ticket ahead of it:
 
 ## Don'ts
 
-- Don't commit or push without the developer's yes to the question in Step 7, and never with
-  `git add -A`. No `stash`, `reset`, `rebase`, `merge`, `checkout` or force-push at all: when
-  the tree or the remote is not what you expected, describe it and stop. The offer is yours,
-  the decision is theirs.
+- Don't commit or push without the developer's yes to the question in Step 7, unless the repo
+  set `git.confirmPush: false` and every gate passed; never with `git add -A`. No `stash`,
+  `reset`, `rebase`, `merge`, `checkout` or force-push at all: when the tree or the remote is
+  not what you expected, describe it and stop. The offer is yours, the decision is theirs; with
+  `git.confirmPush: false` they made it once, in the config.
+- Don't deploy unless `deploy.command` is set and the push went to `git.baseBranch`, never past
+  a CI gate the config declares, and not without a yes unless `deploy.auto` is `true`.
 - Don't push R0/R1 work or a `LOCAL-` task to `main`.
 - Don't move the ticket ahead of the code: In Review means it is on staging, Done means
   checked in production. Never transition silently.

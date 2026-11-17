@@ -5,7 +5,7 @@ repo**: `.claude/task-flow.json`. The plugin itself ships no project values. Cop
 `templates/task-flow.json` into your repo, replace the placeholders, commit it.
 
 The file is optional. Without it the skills fall back to: no tracker, base branch `main`,
-`git.mode` `main`, and a validation gate guessed from `package.json` / `Makefile` /
+`git.mode` `main`, `git.confirmPush` `true`, no deploy, and a validation gate guessed from `package.json` / `Makefile` /
 CI config — and they say so out loud rather than pretending.
 
 Unknown keys are ignored, so a repo may carry extra fields for its own tooling.
@@ -69,6 +69,26 @@ If neither resolves, the skill reports the available transitions and asks; it ne
 | `mode` | `"main"` \| `"pr"` | `main` | The **default** answer to "push or PR?" at the commit offer, not a hard rule. `main`: commit and push straight to `baseBranch`. `pr`: work on a branch, push it, open a PR with `gh pr create` and the ticket key in the title. Either way the developer can pick the other for one change (a push to `main`, or a PR when a change needs a second pair of eyes). A ticket is In Review only once the code is on staging, not when the PR opens. `push-to-main` is accepted as an alias of `main`. |
 | `branchPrefix` | string | `feature/` | Prefix for branch names in a PR: `<branchPrefix><KEY>-<slug>`. |
 | `prodBranch` | string | — | Optional. The branch that represents production, if promotion is a merge rather than a deploy. **Done** still requires a human to confirm they checked it there. |
+| `confirmPush` | boolean | `true` | `true`: the commit offer is a question, and nothing is committed or pushed without the developer's yes. `false`: an opt-in for teams that ship every reviewed change. Only when every gate holds on the final diff after cleanup (R2+ and a real ticket, `verify.commands` non-empty and re-run green, no open blocker or major from the last review Step 3b calls for, the critic's PASS after the last edit where it is mandatory, the risky heads-up and the owner's OK on a contract break where they apply, the commit identity confirmed once per session), the agent commits and does what `mode` says without asking: a push to `baseBranch`, or a branch and a pull request. A gate that fails still stops it, and so does the board's warning about a neighbour's commits. The optional critic is then skipped unless the developer asks for it. |
+
+### `deploy` — object, optional
+
+How a pushed change is shipped, for repos where that is a step someone runs rather than
+something CI does on its own. Without this key the agent never deploys.
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `command` | string | — | The command that ships the pushed commit, run from the repo root (`make deploy`, `./deploy.sh`), or, when it is more than one command, a pointer that starts with `see` (`"see README, section Deploy"`): the agent then follows that procedure exactly. The template's `<your deploy command>` is a placeholder to replace. |
+| `target` | `"staging"` \| `"production"` | `production` | Where `command` ships. A production deploy waits for a green e2e run when `ci.e2e.blocksProduction` is set. |
+| `auto` | boolean | `false` | `false`: after the push the agent names the command and runs it only on the developer's yes. `true`: an opt-in; after a successful push to `baseBranch` and the CI gates the config declares (unit when `ci.unit.blocksDeploy`, e2e for a production target when `ci.e2e.blocksProduction`), the agent runs it without asking, then checks the change on the target it reached and reports what shipped. A failed deploy is reported and never retried blindly. |
+
+A pull-request push is never deployed: the change is not merged yet. `deploy` is for repos where someone runs the
+deploy; when CI deploys on its own, drop `deploy`. `ci` stays in both cases. The template's `deploy` (an
+agent-run production deploy) and `ci.staging.deployed` (a CI-run staging deploy) are examples of
+two different setups; keep the one that matches yours.
+
+Deploying does not move a ticket: **In Review** still means "on staging after a green CI", and
+**Done** still needs a human's check on production through `release-check`.
 
 ### `verify` — object, optional
 

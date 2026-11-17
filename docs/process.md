@@ -144,6 +144,11 @@ only the files of the task, never rewrites history, and commits under the develo
 It offers two ways out: a push to `main` (the default, set by `git.mode`), or a pull request when
 a change needs a second pair of eyes. Only R2 and R3 work is offered either.
 
+A repository can opt in to skipping the question (`git.confirmPush: false`): once every gate has
+passed, the agent commits and pushes by itself. With `deploy.command` it then ships a change
+pushed to the base branch, on a yes by default or by itself with `deploy.auto: true`. Both are
+off unless the team writes them into the repo's config; `setup` asks about them.
+
 Developers often run several sessions on one machine. The **shared board** records, for each
 live session, its ticket, the files it touches and whether it is using the local stack. Hooks
 warn **before** a session edits a file a neighbour is editing, restarts a stack a neighbour is
@@ -177,7 +182,8 @@ One file in the repository, `.claude/task-flow.json`: the tracker and project ke
 branch and the default push mode, the commands that verify a change (globally, per area and
 end-to-end), how to start the app and where it serves, which rule files apply to which paths,
 the risky areas and their owners, how to read the CI runs and the staging and production URLs,
-the hotspots, the stack commands, and the language for ticket comments. Everything else in the
+the hotspots, the stack commands, the language for ticket comments and, optionally, whether
+reviewed changes are pushed and deployed without asking. Everything else in the
 workflow is project-independent.
 
 Credentials never go in that file. They live in the environment or in per-user storage outside
